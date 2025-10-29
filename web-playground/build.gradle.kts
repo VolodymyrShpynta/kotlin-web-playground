@@ -27,6 +27,8 @@ dependencies {
     implementation("io.ktor:ktor-server-core-jvm")    // Core server APIs
     implementation("io.ktor:ktor-server-netty-jvm")   // Netty engine for running the server
 
+    implementation("io.ktor:ktor-server-status-pages")
+
     // Ktor testing and client modules (also version-managed by BOM)
     testImplementation("io.ktor:ktor-server-test-host-jvm") // In-memory test host for fast HTTP tests
     testImplementation("io.ktor:ktor-client-cio-jvm")       // CIO client for integration/smoke tests

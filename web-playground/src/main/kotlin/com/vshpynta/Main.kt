@@ -1,8 +1,11 @@
 package com.vshpynta
 
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
@@ -28,6 +31,16 @@ fun main() {
  * Put feature installs, routing, dependency wiring, etc., here.
  */
 fun Application.module() {
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            log.error("An unknown error occurred", cause)
+            call.respondText(
+                text = "500: $cause",
+                status = HttpStatusCode.InternalServerError
+            )
+        }
+    }
+
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
         helloWorldRoute()
