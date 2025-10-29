@@ -1,5 +1,8 @@
 package com.vshpynta
 
+import com.typesafe.config.ConfigFactory
+import com.vshpynta.config.ConfigStringifier.stringify
+import com.vshpynta.config.WebappConfig
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -19,10 +22,16 @@ private val log = LoggerFactory.getLogger("com.vshpynta.Main")
  * Delegates configuration to [Application.module] for testability.
  */
 fun main() {
-    log.debug("Starting Ktor Netty server...")
+    log.debug("Starting web-playground application...")
+
+    val env = System.getenv("WEB_PLAYGROUND_ENV") ?: "local"
+    log.debug("Application runs in the environment '$env'")
+
+    val appConfig = createAppConfig(env)
+    log.debug("Configuration loaded successfully: \n${stringify(appConfig)}")
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
-    embeddedServer(Netty, port = 4207, module = Application::module)
+    embeddedServer(Netty, port = appConfig.httpPort, module = Application::module)
         .start(wait = true)
 }
 
@@ -57,3 +66,14 @@ private fun Routing.helloWorldRoute() {
         call.respondText("Hello, World!")
     }
 }
+
+private fun createAppConfig(env: String) =
+    ConfigFactory
+        .parseResources("app-${env}.conf")
+        .withFallback(ConfigFactory.parseResources("app.conf"))
+        .resolve()
+        .let {
+            WebappConfig(
+                httpPort = it.getInt("httpPort")
+            )
+        }
