@@ -31,8 +31,10 @@ dependencies {
     testImplementation("io.ktor:ktor-server-test-host-jvm") // In-memory test host for fast HTTP tests
     testImplementation("io.ktor:ktor-client-cio-jvm")       // CIO client for integration/smoke tests
 
-    // Other dependencies (Kotlin stdlib, coroutines, etc.) remain unchanged
+    // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
+    implementation("ch.qos.logback:logback-classic:1.5.20")
+    implementation("org.slf4j:slf4j-api:2.0.17")
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }

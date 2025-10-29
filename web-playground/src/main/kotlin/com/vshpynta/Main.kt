@@ -7,12 +7,17 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import org.slf4j.LoggerFactory
+
+private val log = LoggerFactory.getLogger("com.vshpynta.Main")
 
 /**
  * Application entry point for starting the Ktor Netty server.
  * Delegates configuration to [Application.module] for testability.
  */
 fun main() {
+    log.debug("Starting Ktor Netty server...")
+
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = 4207, module = Application::module)
         .start(wait = true)
