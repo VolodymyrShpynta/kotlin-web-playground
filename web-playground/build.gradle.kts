@@ -40,6 +40,9 @@ dependencies {
     // Typesafe Config for externalized configuration management
     implementation("com.typesafe:config:1.4.3")
 
+    // Gson for JSON serialization/deserialization
+    implementation("com.google.code.gson:gson:2.13.2")
+
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))

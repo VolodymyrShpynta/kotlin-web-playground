@@ -11,11 +11,13 @@ class ApplicationModuleTest {
 
     @Test
     fun `GET - root returns Hello, World!`() = testApplication {
-        application {
-            module()   // use production wiring
-        }
+        // Given: application module installed and root endpoint
+        application { module() } // use production wiring
 
+        // When: client performs GET request
         val res = client.get("/")
+
+        // Then: status and body match expected greeting
         assertEquals(HttpStatusCode.OK, res.status)
         assertEquals("Hello, World!", res.bodyAsText())
     }

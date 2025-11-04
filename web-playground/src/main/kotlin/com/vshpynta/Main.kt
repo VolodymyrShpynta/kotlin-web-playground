@@ -3,6 +3,9 @@ package com.vshpynta
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
+import com.vshpynta.web.JsonWebResponse
+import com.vshpynta.web.TextWebResponse
+import com.vshpynta.web.ktor.webResponse
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -52,7 +55,7 @@ fun Application.module() {
 
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
-        helloWorldRoute()
+        helloWorldRoutes()
     }
 }
 
@@ -60,11 +63,23 @@ fun Application.module() {
  * Defines the `GET /` endpoint returning a static greeting.
  * Marked private because it's an implementation detail of routing setup.
  */
-private fun Routing.helloWorldRoute() {
-    get("/") {
-        // `call` holds request/response context. respondText sends a plain text body.
-        call.respondText("Hello, World!")
-    }
+private fun Routing.helloWorldRoutes() {
+    get("/", webResponse {
+        TextWebResponse("Hello, World!")
+    })
+
+    get("/param_test", webResponse {
+        TextWebResponse("The param is: ${call.request.queryParameters["foo"]}")
+    })
+
+    get("/json_test", webResponse {
+        JsonWebResponse(mapOf("foo" to "bar"))
+    })
+
+    get("/json_test_with_header", webResponse {
+        JsonWebResponse(mapOf("foo" to "bar"))
+            .header("X-Test-Header", "Just a test!")
+    })
 }
 
 private fun createAppConfig(env: String) =
