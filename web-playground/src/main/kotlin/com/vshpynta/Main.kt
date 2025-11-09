@@ -6,6 +6,7 @@ import com.vshpynta.config.WebappConfig
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.ktor.webResponse
+import com.zaxxer.hikari.HikariDataSource
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -16,7 +17,10 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import org.flywaydb.core.Flyway
+import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
+import javax.sql.DataSource
 
 private val log = LoggerFactory.getLogger("com.vshpynta.Main")
 
@@ -32,6 +36,9 @@ fun main() {
 
     val appConfig = createAppConfig(env)
     log.debug("Configuration loaded successfully: \n${stringify(appConfig)}")
+
+    val dataSource = createAndMigrateDataSource(appConfig)
+    log.debug("Database connection pool initialized: {}", dataSource)
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort, module = Application::module)
@@ -82,6 +89,24 @@ private fun Routing.helloWorldRoutes() {
     })
 }
 
+fun createAndMigrateDataSource(config: WebappConfig) =
+    createDataSource(config).also(::migrateDataSource)
+
+fun createDataSource(config: WebappConfig) =
+    HikariDataSource().apply {
+        jdbcUrl = config.dbUrl
+        username = config.dbUser
+        password = config.dbPassword
+    }
+
+fun migrateDataSource(dataSource: DataSource): MigrateResult =
+    Flyway.configure()
+        .dataSource(dataSource)
+        .locations("classpath:db/migration")
+        .table("flyway_schema_history")
+        .load()
+        .migrate()
+
 private fun createAppConfig(env: String) =
     ConfigFactory
         .parseResources("app-${env}.conf")
@@ -89,6 +114,9 @@ private fun createAppConfig(env: String) =
         .resolve()
         .let {
             WebappConfig(
-                httpPort = it.getInt("httpPort")
+                httpPort = it.getInt("httpPort"),
+                dbUrl = it.getString("db.url"),
+                dbUser = it.getString("db.user"),
+                dbPassword = it.getString("db.password")
             )
         }

@@ -43,6 +43,15 @@ dependencies {
     // Gson for JSON serialization/deserialization
     implementation("com.google.code.gson:gson:2.13.2")
 
+    // HikariCP for JDBC connection pooling
+    implementation("com.zaxxer:HikariCP:7.0.2")
+
+    // Flyway for database migrations
+    implementation("org.flywaydb:flyway-core:11.16.0")
+
+    // H2 Database for in-memory database
+    implementation("com.h2database:h2:2.4.240")
+
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
