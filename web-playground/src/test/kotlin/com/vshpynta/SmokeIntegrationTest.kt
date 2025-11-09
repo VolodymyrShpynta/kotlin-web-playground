@@ -15,6 +15,7 @@ import io.ktor.server.netty.NettyApplicationEngine
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.net.ServerSocket
@@ -51,8 +52,9 @@ class SmokeIntegrationTest {
     private suspend fun get(pathAndQuery: String): HttpResponse =
         client.get("http://localhost:$port$pathAndQuery")
 
+    @DisplayName("GET / returns Hello, World!")
     @Test
-    fun `GET - root returns Hello, World!`() = runTest(timeout = 10.seconds) {
+    fun shouldReturnHelloWorldOnRootGet() = runTest(timeout = 10.seconds) {
         // Given: root endpoint path
         val path = "/"
 
@@ -65,8 +67,9 @@ class SmokeIntegrationTest {
         assertEquals(ContentType.Text.Plain.withCharset(Charsets.UTF_8), res.contentType())
     }
 
+    @DisplayName("GET /param_test returns provided param value")
     @Test
-    fun `GET - param_test returns provided param value`() = runTest(timeout = 10.seconds) {
+    fun shouldReturnProvidedParamValueFromParamTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: endpoint with query param foo=abc123
         val path = "/param_test?foo=abc123"
 
@@ -78,8 +81,9 @@ class SmokeIntegrationTest {
         assertEquals("The param is: abc123", res.bodyAsText())
     }
 
+    @DisplayName("GET /param_test returns null when param missing")
     @Test
-    fun `GET - param_test returns null when param missing`() = runTest(timeout = 10.seconds) {
+    fun shouldReturnNullWhenParamMissingOnParamTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: endpoint without foo query parameter
         val path = "/param_test"
 
@@ -91,8 +95,9 @@ class SmokeIntegrationTest {
         assertEquals("The param is: null", res.bodyAsText())
     }
 
+    @DisplayName("GET /json_test returns JSON payload")
     @Test
-    fun `GET - json_test returns JSON payload`() = runTest(timeout = 10.seconds) {
+    fun shouldReturnJsonPayloadOnJsonTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: json_test endpoint
         val path = "/json_test"
 
@@ -106,8 +111,9 @@ class SmokeIntegrationTest {
         assertEquals("""{"foo":"bar"}""", res.bodyAsText())
     }
 
+    @DisplayName("GET /json_test_with_header returns JSON payload and custom header")
     @Test
-    fun `GET - json_test_with_header returns JSON payload and custom header`() = runTest(timeout = 10.seconds) {
+    fun shouldReturnJsonPayloadAndCustomHeaderOnJsonTestWithHeaderEndpoint() = runTest(timeout = 10.seconds) {
         // Given: json_test_with_header endpoint
         val path = "/json_test_with_header"
 

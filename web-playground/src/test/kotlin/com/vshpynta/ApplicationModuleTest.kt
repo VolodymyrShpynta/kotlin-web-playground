@@ -4,13 +4,15 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.testApplication
-import kotlin.test.Test
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
 class ApplicationModuleTest {
 
+    @DisplayName("GET / returns Hello, World!")
     @Test
-    fun `GET - root returns Hello, World!`() = testApplication {
+    fun shouldReturnHelloWorldOnRootGet() = testApplication {
         // Given: application module installed and root endpoint
         application { module() } // use production wiring
 

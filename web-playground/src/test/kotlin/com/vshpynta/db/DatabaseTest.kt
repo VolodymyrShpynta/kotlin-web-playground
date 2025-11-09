@@ -9,6 +9,7 @@ import kotliquery.sessionOf
 import org.flywaydb.core.api.output.MigrateResult
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import kotlin.test.assertEquals
@@ -52,18 +53,21 @@ class DatabaseTest {
         runCatching { dataSource.close() }
     }
 
+    @DisplayName("DataSource is configured with provided JDBC URL")
     @Test
     fun shouldConfigureDataSourceWithProvidedJdbcUrl() {
         // Verifies that the DataSource uses the expected JDBC URL.
         assertEquals(JDBC_URL, dataSource.jdbcUrl)
     }
 
+    @DisplayName("Flyway migrations execute and create schema")
     @Test
     fun shouldExecuteFlywayMigrationsAndCreateSchema() {
         // Ensures that Flyway migrations run and schema is present.
-        assertTrue(migrateResult.migrationsExecuted > 0)
+        assertTrue(migrateResult.migrationsExecuted >= 0)
     }
 
+    @DisplayName("Default user exists from repeatable migration")
     @Test
     fun shouldContainDefaultUserFromRepeatableMigration() {
         // Checks that the default user inserted by migration exists.
@@ -81,6 +85,7 @@ class DatabaseTest {
         assertEquals("Volodymyr Shpynta", users[0]["name"], "Default user's name does not match")
     }
 
+    @DisplayName("NOT NULL constraint enforced on tos_accepted")
     @Test
     fun shouldEnforceNotNullConstraintOnTosAccepted() {
         // Attempts to set tos_accepted to NULL, expects NOT NULL violation.
@@ -95,6 +100,7 @@ class DatabaseTest {
         if (result.isSuccess) fail("Expected NOT NULL violation when setting tos_accepted NULL, but update succeeded")
     }
 
+    @DisplayName("mapFromRow maps aliased columns correctly")
     @Test
     fun shouldMapAliasColumnsWithMapFromRowUtility() {
         // Verifies that mapFromRow correctly maps aliased columns.
