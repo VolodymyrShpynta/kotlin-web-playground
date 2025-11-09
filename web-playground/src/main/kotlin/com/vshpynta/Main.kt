@@ -3,6 +3,7 @@ package com.vshpynta
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
+import com.vshpynta.db.mapFromRow
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.ktor.webResponse
@@ -17,6 +18,8 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotliquery.queryOf
+import kotliquery.sessionOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
@@ -40,9 +43,27 @@ fun main() {
     val dataSource = createAndMigrateDataSource(appConfig)
     log.debug("Database connection pool initialized: {}", dataSource)
 
+    dbConnectivityTests(dataSource)
+
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort, module = Application::module)
         .start(wait = true)
+}
+
+private fun dbConnectivityTests(dataSource: HikariDataSource) {
+    sessionOf(dataSource).use { dbSession ->
+        val currentTime = dbSession.single(queryOf("SELECT NOW()")) {
+            mapFromRow(it)
+        }
+        log.debug("Database connectivity verified. Current DB time: {}", currentTime)
+    }
+
+    sessionOf(dataSource).use { dbSession ->
+        val result = dbSession.single(queryOf("SELECT 1 AS foo")) {
+            mapFromRow(it)
+        }
+        log.debug("Database test query returned expected result: {}", result)
+    }
 }
 
 /**

@@ -52,6 +52,9 @@ dependencies {
     // H2 Database for in-memory database
     implementation("com.h2database:h2:2.4.240")
 
+    // Kotliquery for type-safe SQL querying
+    implementation("com.github.seratch:kotliquery:1.9.1")
+
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
