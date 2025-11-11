@@ -107,7 +107,7 @@ fun migrateDataSource(dataSource: DataSource): MigrateResult =
         .load()
         .migrate()
 
-private fun createAppConfig(env: String) =
+fun createAppConfig(env: String) =
     ConfigFactory
         .parseResources("app-${env}.conf")
         .withFallback(ConfigFactory.parseResources("app.conf"))

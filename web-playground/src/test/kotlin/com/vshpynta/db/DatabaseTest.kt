@@ -1,6 +1,6 @@
 package com.vshpynta.db
 
-import com.vshpynta.config.WebappConfig
+import com.vshpynta.createAppConfig
 import com.vshpynta.createDataSource
 import com.vshpynta.migrateDataSource
 import com.zaxxer.hikari.HikariDataSource
@@ -15,8 +15,6 @@ import org.junit.jupiter.api.TestInstance
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
-
-private const val JDBC_URL = "jdbc:h2:mem:playground;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1"
 
 /**
  * Comprehensive database test suite exercising:
@@ -43,16 +41,11 @@ class DatabaseTest {
 
     private lateinit var dataSource: HikariDataSource
     private lateinit var migrateResult: MigrateResult
+    private val appConfig = createAppConfig("test")
 
     @BeforeEach
     fun setUp() {
-        val cfg = WebappConfig(
-            httpPort = 0,
-            dbUrl = JDBC_URL,
-            dbUser = "",
-            dbPassword = ""
-        )
-        dataSource = createDataSource(cfg)
+        dataSource = createDataSource(appConfig)
         migrateResult = migrateDataSource(dataSource)
     }
 
@@ -69,7 +62,7 @@ class DatabaseTest {
     @Test
     fun shouldConfigureDataSourceWithProvidedJdbcUrl() {
         // Verifies that the DataSource uses the expected JDBC URL.
-        assertEquals(JDBC_URL, dataSource.jdbcUrl)
+        assertEquals(appConfig.dbUrl, dataSource.jdbcUrl)
     }
 
     @DisplayName("Flyway migrations execute and create schema")
