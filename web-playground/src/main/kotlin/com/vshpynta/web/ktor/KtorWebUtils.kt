@@ -9,6 +9,18 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.RoutingHandler
+import kotliquery.Session
+import kotliquery.sessionOf
+import javax.sql.DataSource
+
+fun webResponseDb(
+    dataSource: DataSource,
+    handler: suspend RoutingContext.(Session) -> WebResponse
+): RoutingHandler =
+    webResponse {
+        sessionOf(dataSource, returnGeneratedKey = true)
+            .use { dbSession -> handler(dbSession) }
+    }
 
 fun webResponse(
     handler: suspend RoutingContext.() -> WebResponse

@@ -19,6 +19,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.net.ServerSocket
+import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
 
@@ -34,12 +35,15 @@ class SmokeIntegrationTest {
 
     private lateinit var server: EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration>
     private lateinit var client: HttpClient
+    private lateinit var dataSource: DataSource
     private var port: Int = -1
+    private val appConfig = createAppConfig("test")
 
     @BeforeAll
     fun startServer() {
+        dataSource = createDataSource(appConfig)
         port = ServerSocket(0).use { it.localPort } // Ephemeral free port
-        server = embeddedServer(Netty, port = port) { module() }.start(wait = false)
+        server = embeddedServer(Netty, port = port) { module(dataSource) }.start(wait = false)
         client = HttpClient(CIO)
     }
 
@@ -126,5 +130,21 @@ class SmokeIntegrationTest {
         assertEquals("""{"foo":"bar"}""", res.bodyAsText())
         // Header names are lowercased when set by webResponse helper
         assertEquals("Just a test!", res.headers["x-test-header"])
+    }
+
+    @DisplayName("GET /db_test returns JSON with single SELECT result")
+    @Test
+    fun shouldReturnSingleSelectResultFromDbTestEndpoint() = runTest(timeout = 10.seconds) {
+        // Given: db_test endpoint executing 'SELECT 1 as one'
+        val path = "/db_test"
+
+        // When
+        val res = get(path)
+
+        // Then: verify status, content type, and JSON body
+        assertEquals(200, res.status.value)
+        assertEquals(ContentType.Application.Json.withCharset(Charsets.UTF_8), res.contentType())
+        // mapFromRow on 'SELECT 1 as one' yields {"one":1}
+        assertEquals("""{"one":1}""", res.bodyAsText())
     }
 }

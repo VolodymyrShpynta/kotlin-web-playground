@@ -3,9 +3,11 @@ package com.vshpynta
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
+import com.vshpynta.db.mapFromRow
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.ktor.webResponse
+import com.vshpynta.web.ktor.webResponseDb
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -17,6 +19,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
+import kotliquery.queryOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
@@ -41,7 +44,7 @@ fun main() {
     log.debug("Database connection pool initialized: {}", dataSource)
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
-    embeddedServer(Netty, port = appConfig.httpPort, module = Application::module)
+    embeddedServer(Netty, port = appConfig.httpPort, module = { module(dataSource) })
         .start(wait = true)
 }
 
@@ -49,7 +52,7 @@ fun main() {
  * Ktor application module installed both in production (via `main`) and tests (via testApplication {}).
  * Put feature installs, routing, dependency wiring, etc., here.
  */
-fun Application.module() {
+fun Application.module(dataSource: DataSource) {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             log.error("An unknown error occurred", cause)
@@ -62,7 +65,7 @@ fun Application.module() {
 
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
-        helloWorldRoutes()
+        helloWorldRoutes(dataSource)
     }
 }
 
@@ -70,7 +73,7 @@ fun Application.module() {
  * Defines the `GET /` endpoint returning a static greeting.
  * Marked private because it's an implementation detail of routing setup.
  */
-private fun Routing.helloWorldRoutes() {
+private fun Routing.helloWorldRoutes(dataSource: DataSource) {
     get("/", webResponse {
         TextWebResponse("Hello, World!")
     })
@@ -86,6 +89,12 @@ private fun Routing.helloWorldRoutes() {
     get("/json_test_with_header", webResponse {
         JsonWebResponse(mapOf("foo" to "bar"))
             .header("X-Test-Header", "Just a test!")
+    })
+
+    get("/db_test", webResponseDb(dataSource) { dbSession ->
+        JsonWebResponse(
+            dbSession.single(queryOf("SELECT 1 as one"), ::mapFromRow)
+        )
     })
 }
 
