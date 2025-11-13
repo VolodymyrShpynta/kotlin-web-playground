@@ -1,5 +1,7 @@
 package com.vshpynta
 
+import com.vshpynta.web.dto.PublicUser
+import com.vshpynta.web.ktor.GsonProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
@@ -13,12 +15,15 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.netty.NettyApplicationEngine
 import kotlinx.coroutines.test.runTest
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.net.ServerSocket
+import java.time.ZonedDateTime
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds
@@ -41,7 +46,8 @@ class SmokeIntegrationTest {
 
     @BeforeAll
     fun startServer() {
-        dataSource = createDataSource(appConfig)
+        // Ensure schema & default user exist before hitting DB-backed routes
+        dataSource = createAndMigrateDataSource(appConfig)
         port = ServerSocket(0).use { it.localPort } // Ephemeral free port
         server = embeddedServer(Netty, port = port) { module(dataSource) }.start(wait = false)
         client = HttpClient(CIO)
@@ -77,10 +83,10 @@ class SmokeIntegrationTest {
         // Given: endpoint with query param foo=abc123
         val path = "/param_test?foo=abc123"
 
-        // When
+        // When: performing request
         val res = get(path)
 
-        // Then
+        // Then: response contains the provided param value
         assertEquals(200, res.status.value)
         assertEquals("The param is: abc123", res.bodyAsText())
     }
@@ -91,7 +97,7 @@ class SmokeIntegrationTest {
         // Given: endpoint without foo query parameter
         val path = "/param_test"
 
-        // When
+        // When: performing request
         val res = get(path)
 
         // Then: body reflects missing param as null
@@ -105,10 +111,10 @@ class SmokeIntegrationTest {
         // Given: json_test endpoint
         val path = "/json_test"
 
-        // When
+        // When: performing request
         val res = get(path)
 
-        // Then
+        // Then: status and content type are JSON; payload matches expected
         assertEquals(200, res.status.value)
         assertEquals(ContentType.Application.Json.withCharset(Charsets.UTF_8), res.contentType())
         // Gson renders mapOf("foo" to "bar") as {"foo":"bar"}
@@ -121,7 +127,7 @@ class SmokeIntegrationTest {
         // Given: json_test_with_header endpoint
         val path = "/json_test_with_header"
 
-        // When
+        // When: performing request
         val res = get(path)
 
         // Then: verify body and custom header
@@ -138,7 +144,7 @@ class SmokeIntegrationTest {
         // Given: db_test endpoint executing 'SELECT 1 as one'
         val path = "/db_test"
 
-        // When
+        // When: performing request
         val res = get(path)
 
         // Then: verify status, content type, and JSON body
@@ -146,5 +152,44 @@ class SmokeIntegrationTest {
         assertEquals(ContentType.Application.Json.withCharset(Charsets.UTF_8), res.contentType())
         // mapFromRow on 'SELECT 1 as one' yields {"one":1}
         assertEquals("""{"one":1}""", res.bodyAsText())
+    }
+
+    @DisplayName("GET /db_get_user returns public user without passwordHash")
+    @Test
+    fun shouldReturnPublicUserFromDbGetUserEndpoint() = runTest(timeout = 10.seconds) {
+        // Given: endpoint '/db_get_user' with seeded default user
+        val path = "/db_get_user"
+
+        // When: calling the endpoint
+        val res = get(path)
+
+        assertEquals(200, res.status.value)
+        assertEquals(ContentType.Application.Json.withCharset(Charsets.UTF_8), res.contentType())
+
+        val body = res.bodyAsText()
+
+        // Then: raw JSON does not contain passwordHash
+        assertTrue(!body.contains("passwordHash")) { "passwordHash should not be serialized" }
+
+        // And: deserialize to PublicUser projection
+        val actual = GsonProvider.gson.fromJson(body, PublicUser::class.java)
+
+        // Then: recursive comparison ignoring dynamic infra fields (id/timestamps)
+        assertThat(actual)
+            .usingRecursiveComparison()
+            .ignoringFields("id", "createdAt", "updatedAt")
+            .isEqualTo(
+                PublicUser(
+                    id = -1, // ignored
+                    createdAt = ZonedDateTime.now(), // ignored
+                    updatedAt = ZonedDateTime.now(), // ignored
+                    email = "vshpynta@crud.business",
+                    tosAccepted = true,
+                    name = "Volodymyr Shpynta"
+                )
+            )
+
+        // And: ordering invariant for timestamps
+        assert(actual.createdAt <= actual.updatedAt) { "createdAt must be <= updatedAt" }
     }
 }

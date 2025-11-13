@@ -4,8 +4,11 @@ import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
 import com.vshpynta.db.mapFromRow
+import com.vshpynta.db.mapping.fromRow
+import com.vshpynta.model.User
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
+import com.vshpynta.web.dto.PublicUser
 import com.vshpynta.web.ktor.webResponse
 import com.vshpynta.web.ktor.webResponseDb
 import com.zaxxer.hikari.HikariDataSource
@@ -94,6 +97,17 @@ private fun Routing.helloWorldRoutes(dataSource: DataSource) {
     get("/db_test", webResponseDb(dataSource) { dbSession ->
         JsonWebResponse(
             dbSession.single(queryOf("SELECT 1 as one"), ::mapFromRow)
+        )
+    })
+
+    get("/db_get_user", webResponseDb(dataSource) { dbSession ->
+        JsonWebResponse(
+            dbSession.single(
+                queryOf("SELECT * FROM user_table"),
+                ::mapFromRow
+            )
+                ?.let { User.fromRow(it) }
+                ?.let { PublicUser.fromDomain(it) }
         )
     })
 }

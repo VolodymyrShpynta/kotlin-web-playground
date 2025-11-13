@@ -59,6 +59,9 @@ dependencies {
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
+
+    // AssertJ for fluent recursive comparison assertions in tests
+    testImplementation("org.assertj:assertj-core:3.27.6")
 }
 
 application {
