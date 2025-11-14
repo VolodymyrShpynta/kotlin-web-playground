@@ -16,11 +16,14 @@ import java.time.format.DateTimeFormatter
 import java.util.Base64
 
 /**
- * Centralized Gson instance with custom adapters for Java time and binary types to avoid
- * reflection issues on newer JVMs (JPMS encapsulation) and to produce a stable ISO-8601 JSON format.
+ * Provides a singleton Gson instance configured with custom type adapters:
+ * - ZonedDateTime / OffsetDateTime: ISO-8601 string format for portability.
+ * - ByteBuffer / ByteArray: Base64 encoding (avoids leaking binary into logs; reversible).
  *
- * NOTE: ByteBuffer requires a hierarchy adapter because runtime concrete classes (HeapByteBuffer, DirectByteBuffer)
- * are subclasses of ByteBuffer; a simple registerTypeAdapter won't match those and Gson would fall back to reflection.
+ * Implementation notes:
+ * - Uses hierarchy adapter for ByteBuffer so concrete subclasses (Heap / Direct) are handled uniformly.
+ * - Avoids reflective access that may be blocked by JPMS (adds stability on newer JDKs).
+ * - Domain objects with sensitive fields (e.g. `User.passwordHash`) should be mapped to public DTOs before serialization.
  */
 object GsonProvider {
 
@@ -54,11 +57,10 @@ object GsonProvider {
     private val byteBufferAdapter = object : JsonSerializer<ByteBuffer>, JsonDeserializer<ByteBuffer> {
         override fun serialize(src: ByteBuffer?, typeOfSrc: Type?, context: JsonSerializationContext): JsonElement {
             if (src == null) return JsonPrimitive(null as String?)
-            val dup = src.asReadOnlyBuffer()
-            dup.rewind()
-            val bytes = ByteArray(dup.remaining())
-            dup.get(bytes)
-            return JsonPrimitive(Base64.getEncoder().encodeToString(bytes))
+            return src.asReadOnlyBuffer()
+                .apply { rewind() }
+                .let { dup -> ByteArray(dup.remaining()).also { dup.get(it) } }
+                .let { JsonPrimitive(Base64.getEncoder().encodeToString(it)) }
         }
 
         override fun deserialize(json: JsonElement?, typeOfT: Type?, context: JsonDeserializationContext): ByteBuffer? =

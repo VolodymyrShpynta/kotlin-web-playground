@@ -5,6 +5,12 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.withCharset
 
+/**
+ * Outgoing Ktor content for JSON responses using the shared [GsonProvider].
+ *
+ * Converts the provided [body] object to UTF-8 encoded JSON byte array. Serialization adapters
+ * registered in [GsonProvider] handle time and binary types safely.
+ */
 class KtorJsonWebResponse(
     val body: Any?,
     override val status: HttpStatusCode = HttpStatusCode.OK

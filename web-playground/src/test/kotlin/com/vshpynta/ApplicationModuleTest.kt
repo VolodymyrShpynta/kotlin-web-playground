@@ -14,6 +14,10 @@ import org.junit.jupiter.api.TestInstance
 import javax.sql.DataSource
 import kotlin.test.assertEquals
 
+/**
+ * Unit-style tests using Ktor's `testApplication` harness (no real network socket).
+ * Focus: fast feedback on routing + minimal DB interaction through in-memory H2.
+ */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ApplicationModuleTest {
 

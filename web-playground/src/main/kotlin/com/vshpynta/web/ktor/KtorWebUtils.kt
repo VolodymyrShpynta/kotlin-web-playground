@@ -13,6 +13,19 @@ import kotliquery.Session
 import kotliquery.sessionOf
 import javax.sql.DataSource
 
+/**
+ * Wraps a Ktor route handler that needs a database session.
+ *
+ * Creates a Kotliquery [Session] per request (with `returnGeneratedKey=true` so inserts can retrieve keys),
+ * passes it to [handler], then closes it automatically via `use`.
+ *
+ * Usage:
+ * ```kotlin
+ * get("/users", webResponseDb(ds) { session ->
+ *     JsonWebResponse(userRepository.list(session))
+ * })
+ * ```
+ */
 fun webResponseDb(
     dataSource: DataSource,
     handler: suspend RoutingContext.(Session) -> WebResponse
@@ -22,35 +35,29 @@ fun webResponseDb(
             .use { dbSession -> handler(dbSession) }
     }
 
+/**
+ * Core adapter converting a simple [WebResponse]-returning handler into a Ktor [RoutingHandler].
+ *
+ * Responsibilities:
+ * - Execute user handler and obtain [WebResponse].
+ * - Apply headers (case-insensitive merging already done inside WebResponse).
+ * - Convert status code integer into Ktor's [HttpStatusCode].
+ * - Dispatch body based on concrete type (text vs JSON), delegating JSON serialization to [KtorJsonWebResponse].
+ */
 fun webResponse(
     handler: suspend RoutingContext.() -> WebResponse
-): RoutingHandler {
-    return {
-        val resp = this.handler()
+): RoutingHandler = {
+    val resp = this.handler()
 
-        for ((name, values) in resp.headers())
-            for (value in values)
-                call.response.header(name, value)
+    // Propagate headers to the outgoing response
+    for ((name, values) in resp.headers())
+        for (value in values)
+            call.response.header(name, value)
 
-        val statusCode = HttpStatusCode.fromValue(resp.statusCode)
+    val statusCode = HttpStatusCode.fromValue(resp.statusCode)
 
-        when (resp) {
-            is TextWebResponse -> {
-                // `call` holds request/response context. respondText sends a plain text body
-                call.respondText(
-                    text = resp.body,
-                    status = statusCode
-                )
-            }
-
-            is JsonWebResponse -> {
-                call.respond(
-                    KtorJsonWebResponse(
-                        body = resp.body,
-                        status = statusCode
-                    )
-                )
-            }
-        }
+    when (resp) {
+        is TextWebResponse -> call.respondText(resp.body, status = statusCode)
+        is JsonWebResponse -> call.respond(KtorJsonWebResponse(resp.body, statusCode))
     }
 }
