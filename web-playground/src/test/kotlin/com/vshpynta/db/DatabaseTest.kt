@@ -4,6 +4,8 @@ import com.vshpynta.createAppConfig
 import com.vshpynta.createDataSource
 import com.vshpynta.migrateDataSource
 import com.zaxxer.hikari.HikariDataSource
+import kotliquery.Session
+import kotliquery.TransactionalSession
 import kotliquery.queryOf
 import kotliquery.sessionOf
 import org.flywaydb.core.api.output.MigrateResult
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
 
@@ -23,18 +26,25 @@ import kotlin.test.fail
  * 2. Positive cases: Successful inserts, updates, deletes, and row mapping utilities.
  * 3. Query patterns: single(), list(), forEach() usage in Kotliquery with value tables.
  * 4. Constraints & edge cases: UNIQUE, NOT NULL, length validation (VARCHAR(255)), and missing rows.
- * 5. Reusable helpers: Encapsulate repetitive boilerplate (insertUser, findUserByEmail, etc.) so
+ * 5. Reusable helpers: Encapsulate repetitive boilerplate (createUser, findUserByEmail, userCount, etc.) so
  *    individual tests focus on intent instead of setup noise.
+ * 6. Transaction savepoints: Verifies partial vs full rollback behaviour using [dbSavePoint] with
+ *    (a) uncaught exception causing whole transaction rollback and (b) caught exception preserving
+ *    outer work while discarding inner failed statements.
+ * 7. Explicit rollback test harness: [testTx] helper demonstrates transactional isolation by always
+ *    rolling back changes made inside its scope.
  *
  * Rationale / Design Notes:
  *  - Each test gets a fresh, migrated schema via @BeforeEach for strong isolation.
  *  - Helper functions either return domain data directly or a Result<> when failures are part of
  *    the assertion (e.g., expecting constraint violations).
- *  - We assert only behaviour observable from SQL (row counts / values) to avoid coupling to
- *    implementation details of libraries.
+ *  - Assertions target externally observable SQL effects (row counts / column values) to avoid
+ *    coupling to library internals.
  *  - H2 differences: Certain PostgreSQL edge behaviours (e.g., specific SQLSTATE codes) may differ;
  *    therefore tests currently assert generic failure (isFailure) instead of exact SQLSTATE. If
- *    production switches to PostgreSQL in tests (e.g., Testcontainers), assertions can be narrowed.
+ *    production switches to PostgreSQL in tests (Testcontainers), assertions can be narrowed.
+ *  - Savepoint semantics: An exception inside dbSavePoint rolls back only statements since the savepoint;
+ *    if rethrown (uncaught) the outer transaction aborts; if caught the outer transaction may continue.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DatabaseTest {
@@ -61,21 +71,27 @@ class DatabaseTest {
     @DisplayName("DataSource is configured with provided JDBC URL")
     @Test
     fun shouldConfigureDataSourceWithProvidedJdbcUrl() {
-        // Verifies that the DataSource uses the expected JDBC URL.
+        // Given: application configuration supplying JDBC URL
+        // When: DataSource is created in setUp()
+        // Then: DataSource reflects configured URL
         assertEquals(appConfig.dbUrl, dataSource.jdbcUrl)
     }
 
     @DisplayName("Flyway migrations execute and create schema")
     @Test
     fun shouldExecuteFlywayMigrationsAndCreateSchema() {
-        // Ensures that Flyway migrations run and schema is present.
+        // Given: a fresh in-memory database
+        // When: Flyway migrations are applied
+        // Then: At least zero (>=0) migrations executed (basic sanity)
         assertTrue(migrateResult.migrationsExecuted >= 0)
     }
 
     @DisplayName("Default user exists from repeatable migration")
     @Test
     fun shouldContainDefaultUserFromRepeatableMigration() {
-        // Checks that the default user inserted by migration exists.
+        // Given: repeatable migration inserting default user
+        // When: querying by default user email
+        // Then: Exactly one matching row exists with expected name
         val users = findUsersByEmail("vshpynta@crud.business")
         assertEquals(1, users.size, "Expected exactly one default user row")
         assertEquals("Volodymyr Shpynta", users[0]["name"], "Default user's name does not match")
@@ -84,7 +100,9 @@ class DatabaseTest {
     @DisplayName("NOT NULL constraint enforced on tos_accepted")
     @Test
     fun shouldEnforceNotNullConstraintOnTosAccepted() {
-        // Attempts to set tos_accepted to NULL, expects NOT NULL violation.
+        // Given: existing user row
+        // When: attempting to set tos_accepted to NULL
+        // Then: operation should fail due to NOT NULL constraint
         val result = sessionOf(dataSource).use { session ->
             runCatching {
                 session.run(
@@ -192,12 +210,15 @@ class DatabaseTest {
     @DisplayName("insert returns generated key for new user row")
     @Test
     fun shouldInsertRowAndReturnGeneratedKey() {
-        val newId = insertUser(
+        // Given: no prior row with provided email
+        // When: inserting new user
+        val newId = createUser(
             email = "august@augustl.com",
-            passwordHash = "123abc".toByteArray(),
+            password = "123abc",
             name = "August Lilleaas",
             tosAccepted = true
         ).getOrThrow()
+        // Then: generated key present and row persisted
         assertTrue(newId != null && newId > 0L, "Expected generated key > 0")
         assertEquals("August Lilleaas", findUserByEmail("august@augustl.com")?.get("name"))
     }
@@ -205,14 +226,17 @@ class DatabaseTest {
     @DisplayName("update returns affected row count and modifies data")
     @Test
     fun shouldUpdateExistingRowReturningAffectedCount() {
-        val insertedId = insertUser(
+        // Given: user row inserted for update
+        val insertedId = createUser(
             email = "update@test.com",
-            passwordHash = "pw".toByteArray(),
+            password = "pw",
             name = "Initial Name",
             tosAccepted = true
         ).getOrThrow() ?: fail("Insert failed, no generated key")
 
+        // When: updating the user's name
         val affected = updateUserName(insertedId, "Changed Name")
+        // Then: exactly one row updated and name modified
         assertEquals(1, affected, "Expected exactly one row updated")
         assertEquals("Changed Name", findUserByEmail("update@test.com")?.get("name"))
     }
@@ -220,8 +244,11 @@ class DatabaseTest {
     @DisplayName("delete removes all rows and returns affected count")
     @Test
     fun shouldDeleteAllRowsReturningAffectedCount() {
-        insertUser(email = "delete@test.com").getOrThrow() ?: fail("Insert failed")
+        // Given: user row present for deletion
+        createUser(email = "delete@test.com").getOrThrow() ?: fail("Insert failed")
+        // When: deleting all rows
         val affected = sessionOf(dataSource).use { sess -> sess.update(queryOf("DELETE FROM user_table")) }
+        // Then: at least 2 rows deleted (default + inserted), user count is 0
         assertTrue(affected >= 2, "Expected at least 2 rows deleted (default + inserted)")
         assertEquals(0L, userCount())
     }
@@ -233,87 +260,244 @@ class DatabaseTest {
     @DisplayName("inserting duplicate email violates UNIQUE constraint")
     @Test
     fun shouldFailOnDuplicateEmailInsert() {
+        // Given: initial user insert
         val email = "dup@test.com"
-        insertUser(email = email).getOrThrow() ?: fail("Initial insert failed")
-        val duplicateAttempt = insertUser(email = email)
+        createUser(email = email).getOrThrow() ?: fail("Initial insert failed")
+        // When: attempting to insert with duplicate email
+        val duplicateAttempt = createUser(email = email)
+        // Then: UNIQUE constraint violation occurs
         assertTrue(duplicateAttempt.isFailure, "Expected UNIQUE constraint violation on duplicate email")
     }
 
     @DisplayName("inserting NULL password_hash violates NOT NULL constraint")
     @Test
     fun shouldFailOnNullPasswordHashInsert() {
-        val outcome = insertUser(email = "nullpw@test.com", passwordHash = null)
+        // Given: email for user with NULL password
+        val outcome = createUser(email = "nullpw@test.com", password = null)
+        // Then: NOT NULL violation for password_hash
         assertTrue(outcome.isFailure, "Expected NOT NULL violation for password_hash")
     }
 
     @DisplayName("inserting NULL tos_accepted violates NOT NULL after migration")
     @Test
     fun shouldFailOnNullTosAcceptedInsert() {
-        val outcome = insertUser(email = "nulltos@test.com", tosAccepted = null)
+        // Given: email for user with NULL tos_accepted
+        val outcome = createUser(email = "nulltos@test.com", tosAccepted = null)
+        // Then: NOT NULL violation for tos_accepted
         assertTrue(outcome.isFailure, "Expected NOT NULL violation for tos_accepted")
     }
 
     @DisplayName("inserting overly long email (>255) violates length constraint")
     @Test
     fun shouldFailOnOverlyLongEmailInsert() {
+        // Given: email string >255 chars
         val longEmail = "a".repeat(260) + "@example.com"
-        val outcome = insertUser(email = longEmail)
+        // When: attempting to insert user with long email
+        val outcome = createUser(email = longEmail)
+        // Then: length constraint violation for email >255 chars
         assertTrue(outcome.isFailure, "Expected length constraint violation for email >255 chars")
     }
 
     @DisplayName("updating non-existent user id affects 0 rows")
     @Test
     fun shouldReturnZeroAffectedRowsWhenUpdatingMissingUser() {
+        // Given: a non-existent user id
         val affected = updateUserName(-999, "No Row")
+        // Then: zero rows affected for non-existent id update
         assertEquals(0, affected, "Expected zero rows affected for non-existent id update")
+    }
+
+    // ----------------------------------------------------------------------
+    // Savepoint / transactional semantics
+    // ----------------------------------------------------------------------
+
+    @DisplayName("dbSavePoint rolls back inner statements and aborts outer transaction when exception not caught")
+    @Test
+    fun shouldRollbackEntireTransactionWhenExceptionInsideSavePointNotCaught() {
+        // Given: initial user count snapshot and insert SQL
+        val initialCount = userCount()
+        val insertSql = """
+            INSERT INTO user_table (email, password_hash, name, tos_accepted)
+            VALUES (?, ?, ?, ?)
+        """.trimIndent()
+
+        // When: A transaction runs a savepoint block that deliberately violates UNIQUE (duplicate email).
+        // The exception is NOT caught -> dbSavePoint rolls back its inner statements then rethrows ->
+        // outer transaction aborts (rolling back prior outer work as well).
+        val result = runCatching {
+            sessionOf(dataSource, returnGeneratedKey = true).use { session ->
+                session.transaction { tx ->
+                    dbSavePoint(tx) {
+                        tx.updateAndReturnGeneratedKey(
+                            queryOf(insertSql, "sp_nocatch@test.com", "pw".toByteArray(), "SP NoCatch", true)
+                        )
+                        tx.updateAndReturnGeneratedKey(
+                            queryOf(insertSql, "sp_nocatch@test.com", "pw".toByteArray(), "SP Duplicate", true)
+                        ) // <- triggers UNIQUE violation
+                    }
+                }
+            }
+        }
+
+        // Then: Entire transaction rolled back: user count unchanged; email from inner block absent.
+        assertTrue(result.isFailure, "Expected failure due to UNIQUE violation inside savepoint")
+        assertEquals(initialCount, userCount(), "Row count should remain unchanged after rollback")
+        assertEquals(
+            null,
+            findUserByEmail("sp_nocatch@test.com"),
+            "User inserted before violation should be rolled back"
+        )
+    }
+
+    @DisplayName("dbSavePoint partial rollback preserves outer transaction when exception caught")
+    @Test
+    fun shouldCommitOuterTransactionWhileRollingBackFailedSavePointBlockWhenCaught() {
+        // Given: baseline row count and insert SQL
+        val initialCount = userCount()
+        val insertSql = """
+            INSERT INTO user_table (email, password_hash, name, tos_accepted)
+            VALUES (?, ?, ?, ?)
+        """.trimIndent()
+
+        // When: Outer transaction performs pre-savepoint insert, then a savepoint block with a duplicate
+        // email causing UNIQUE violation. Exception is caught -> outer transaction continues with a post-savepoint insert.
+        sessionOf(dataSource, returnGeneratedKey = true).use { session ->
+            session.transaction { tx ->
+                // Outer pre-savepoint insert
+                tx.updateAndReturnGeneratedKey(
+                    queryOf(insertSql, "before_savepoint@test.com", "pw".toByteArray(), "Before SP", true)
+                )
+                try {
+                    dbSavePoint(tx) {
+                        tx.updateAndReturnGeneratedKey(
+                            queryOf(insertSql, "sp_catch@test.com", "pw".toByteArray(), "SP First", true)
+                        )
+                        tx.updateAndReturnGeneratedKey(
+                            queryOf(insertSql, "sp_catch@test.com", "pw".toByteArray(), "SP Duplicate", true)
+                        ) // UNIQUE violation
+                    }
+                } catch (_: Exception) {
+                    // Swallow expected violation: partial rollback limited to savepoint scope.
+                }
+                // Post-savepoint insert
+                tx.updateAndReturnGeneratedKey(
+                    queryOf(insertSql, "after_savepoint@test.com", "pw".toByteArray(), "After SP", true)
+                )
+            }
+        }
+
+        // Then: Only outer inserts persisted (2 rows); savepoint duplicates rolled back; duplicate email absent.
+        val finalCount = userCount()
+        assertEquals(initialCount + 2, finalCount, "Expected exactly two committed rows outside failed savepoint block")
+        assertTrue(findUserByEmail("before_savepoint@test.com") != null, "Pre-savepoint user should be committed")
+        assertTrue(findUserByEmail("after_savepoint@test.com") != null, "Post-savepoint user should be committed")
+        assertEquals(null, findUserByEmail("sp_catch@test.com"), "Savepoint user should be rolled back after violation")
+    }
+
+    @DisplayName("testTx rolls back user inserts created inside its transaction scope")
+    @Test
+    fun shouldRollbackUsersCreatedWithinTestTx() {
+        // Given: initial persistent row count (default migration user(s))
+        val initialCount = userCount()
+
+        // When: transaction creates two distinct users inside testTx (auto-rollback on exit)
+        testTx { txSession ->
+            val userAId = createUser(txSession, email = "augustlill@me.com").getOrThrow() ?: fail("Create user failed")
+            val userBId = createUser(txSession, email = "august_@augustl.com").getOrThrow() ?: fail("Create user failed")
+            assertNotEquals(userAId, userBId)
+            // Then (inside scope): count increased, both users visible
+            val inTxCount = userCount(txSession)
+            assertEquals(initialCount + 2, inTxCount)
+            assertTrue(findUsersByEmail(txSession, "augustlill@me.com").isNotEmpty())
+            assertTrue(findUsersByEmail(txSession, "august_@augustl.com").isNotEmpty())
+        }
+        // Then (after rollback): original count restored; inserted emails absent
+        assertEquals(initialCount, userCount())
+        assertEquals(null, findUserByEmail("augustlill@me.com"))
+        assertEquals(null, findUserByEmail("august_@augustl.com"))
     }
 
     // ----------------------------------------------------------------------
     // Helper API (private) — keeps tests concise & intention‑revealing
     // ----------------------------------------------------------------------
 
-    /** Reusable INSERT statement used by [insertUser]. */
+    /**
+     * Reusable parameterized INSERT statement used by [createUser] helper methods.
+     * Keeps SQL definition centralized for consistency and easier refactoring.
+     */
     private val insertUserSql = """
         INSERT INTO user_table (email, password_hash, name, tos_accepted)
         VALUES (?, ?, ?, ?)
     """.trimIndent()
 
     /**
-     * Inserts a user row and returns a Result containing the generated primary key (nullable if the
-     * driver returns null). Failures (constraint violations, etc.) are captured so tests can assert
-     * on negative scenarios without throwing immediately.
+     * Convenience helper to insert a user using a short‑lived session. Returns a [Result] capturing
+     * success (generated key) or failure (constraint violations, etc.). Prefer this in tests where
+     * transactional composition is not required.
      */
-    private fun insertUser(
+    private fun createUser(
         email: String,
-        passwordHash: Any? = "pw".toByteArray(),
+        password: String? = "pw",
         name: String = "Test User",
         tosAccepted: Boolean? = true
     ): Result<Long?> = sessionOf(dataSource, returnGeneratedKey = true).use { session ->
-        runCatching {
+        createUser(session, email, name, password, tosAccepted)
+    }
+
+    /**
+     * Low-level insert using an existing [Session] (can be transactional). Accepts nullable password
+     * to exercise NOT NULL constraint test paths. Returns generated key or failure wrapped in [Result].
+     */
+    private fun createUser(
+        session: Session,
+        email: String,
+        name: String = "August Lilleaas",
+        passwordText: String? = "1234",
+        tosAccepted: Boolean? = true
+    ): Result<Long?> {
+        val passwordHash = passwordText?.toByteArray()
+        return runCatching {
             session.updateAndReturnGeneratedKey(
                 queryOf(insertUserSql, email, passwordHash, name, tosAccepted)
             )
         }
     }
 
-    /** Fetches a single user row by email (or null if absent). */
+    /**
+     * Fetches a single user row by email (opens and closes its own session). Returns null if absent.
+     * Use the session-aware variants when inside a broader transactional scope to avoid redundant connections.
+     */
     private fun findUserByEmail(email: String): Map<String, Any?>? =
         sessionOf(dataSource).use { session ->
             session.single(queryOf("SELECT * FROM user_table WHERE email = ?", email), ::mapFromRow)
         }
 
-    /** Returns all user rows matching the email (normally 0 or 1 unless integrity broken). */
+    /**
+     * Returns all user rows matching the email (normally 0 or 1 unless integrity issues). Opens a new session.
+     */
     private fun findUsersByEmail(email: String): List<Map<String, Any?>> =
-        sessionOf(dataSource).use { session ->
-            session.list(queryOf("SELECT * FROM user_table WHERE email = ?", email), ::mapFromRow)
-        }
+        sessionOf(dataSource).use { session -> findUsersByEmail(session, email) }
 
-    /** Returns total row count in user_table (post‑delete assertions, etc.). */
-    private fun userCount(): Long = sessionOf(dataSource).use { session ->
+    /**
+     * Session-aware variant of [findUsersByEmail] that does not close the provided session (useful inside transactions).
+     */
+    private fun findUsersByEmail(session: Session, email: String): List<Map<String, Any?>> =
+        session.list(queryOf("SELECT * FROM user_table WHERE email = ?", email), ::mapFromRow)
+
+    /**
+     * Returns total row count in user_table using a new session. Delegates to the session variant.
+     */
+    private fun userCount(): Long = sessionOf(dataSource).use(::userCount)
+
+    /**
+     * Session-aware row count for reuse within transactional test scopes (avoids opening extra sessions).
+     */
+    private fun userCount(session: Session): Long =
         session.single(queryOf("SELECT COUNT(*) AS c FROM user_table"), ::mapFromRow)!!["c"] as Long
-    }
 
-    /** Updates the name for a given id; returns affected row count (0 if missing). */
+    /**
+     * Updates a user's name by id. Returns affected row count (0 if id does not exist). Opens a short-lived session.
+     */
     private fun updateUserName(id: Long, newName: String): Int = sessionOf(dataSource).use { session ->
         session.update(
             queryOf(
@@ -321,5 +505,33 @@ class DatabaseTest {
                 mapOf("name" to newName, "id" to id)
             )
         )
+    }
+
+    /**
+     * Test harness executing [handler] inside a JDBC transaction and ALWAYS rolling back afterwards.
+     *
+     * Implementation detail: uses Kotliquery's transaction support then explicitly calls `rollback()`
+     * on the underlying connection in a finally block ensuring no changes persist even if the handler
+     * completes normally.
+     *
+     * Use Cases:
+     *  - Verifying isolation and visibility of uncommitted changes.
+     *  - Creating deterministic starting points without cleanup code.
+     *
+     * Notes:
+     *  - Do not nest calls to testTx unless you fully understand underlying driver transaction semantics.
+     *  - Exceptions inside the handler still trigger rollback (redundant but harmless) before propagating.
+     */
+    fun testTx(handler: (TransactionalSession) -> Unit) {
+        sessionOf(dataSource, returnGeneratedKey = true)
+            .use { dbSession ->
+                dbSession.transaction { txSession ->
+                    try {
+                        handler(txSession)
+                    } finally {
+                        dbSession.connection.rollback()
+                    }
+                }
+            }
     }
 }
