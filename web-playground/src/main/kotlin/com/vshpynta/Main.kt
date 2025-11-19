@@ -46,7 +46,12 @@ private val log = LoggerFactory.getLogger("com.vshpynta.Main")
 
 /**
  * Application entry point for starting the Ktor Netty server.
- * Delegates configuration to [Application.module] for testability.
+ * - Loads configuration based on environment variable `WEB_PLAYGROUND_ENV` (defaults to 'local').
+ * - Migrates the database using Flyway.
+ * - Starts a demo third-party service for coroutine examples.
+ * - Launches the main Ktor server on the configured port.
+ *
+ * Delegates configuration to [Application.module] for testability and separation of concerns.
  */
 fun main() {
     log.debug("Starting web-playground application...")
@@ -68,6 +73,15 @@ fun main() {
         .start(wait = true)
 }
 
+/**
+ * Starts a demo third-party service on port 9876 for coroutine and HTTP client examples.
+ * Provides endpoints:
+ * - GET /random_number: returns a random number after a random delay
+ * - GET /ping: returns 'pong'
+ * - POST /reverse: reverses the posted body text
+ *
+ * This service is used in the /coroutine_demo endpoint to demonstrate async HTTP calls.
+ */
 fun startThirdPartyService() {
     embeddedServer(Netty, port = 9876) {
         routing {
@@ -91,6 +105,8 @@ fun startThirdPartyService() {
 /**
  * Ktor application module installed both in production (via `main`) and tests (via testApplication {}).
  * Put feature installs, routing, dependency wiring, etc., here.
+ *
+ * @param dataSource The configured JDBC datasource for database access.
  */
 fun Application.module(dataSource: DataSource) {
     install(StatusPages) {
@@ -110,8 +126,18 @@ fun Application.module(dataSource: DataSource) {
 }
 
 /**
- * Defines the `GET /` endpoint returning a static greeting.
- * Marked private because it's an implementation detail of routing setup.
+ * Defines the main HTTP endpoints for the playground application.
+ *
+ * Endpoints:
+ * - GET /: returns a static greeting
+ * - GET /param_test: echoes a query parameter
+ * - GET /json_test: returns a simple JSON object
+ * - GET /json_test_with_header: returns JSON with a custom header
+ * - GET /db_test: returns result of a simple DB query
+ * - GET /db_get_user: returns the first user from the DB as a public DTO
+ * - GET /coroutine_demo: demonstrates async HTTP and DB calls
+ *
+ * @param dataSource The JDBC datasource for DB-backed endpoints.
  */
 private fun Routing.helloWorldRoutes(dataSource: DataSource) {
     get("/", webResponse {
@@ -153,6 +179,13 @@ private fun Routing.helloWorldRoutes(dataSource: DataSource) {
     })
 }
 
+/**
+ * Demonstrates coroutine usage by making async HTTP requests to the third-party service
+ * and performing a blocking DB query in the IO dispatcher.
+ *
+ * @param dbSession The database session for DB queries.
+ * @return [TextWebResponse] with results of all async operations.
+ */
 suspend fun handleCoroutineDemo(dbSession: Session) =
     coroutineScope {
         val client = HttpClient(CIO)
@@ -190,9 +223,21 @@ suspend fun handleCoroutineDemo(dbSession: Session) =
         )
     }
 
+/**
+ * Creates and migrates a HikariCP datasource using Flyway.
+ *
+ * @param config The loaded application configuration.
+ * @return The initialized and migrated [DataSource].
+ */
 fun createAndMigrateDataSource(config: WebappConfig) =
     createDataSource(config).also(::migrateDataSource)
 
+/**
+ * Creates a HikariCP JDBC datasource from the provided config.
+ *
+ * @param config The loaded application configuration.
+ * @return The initialized [HikariDataSource].
+ */
 fun createDataSource(config: WebappConfig) =
     HikariDataSource().apply {
         jdbcUrl = config.dbUrl
@@ -200,6 +245,12 @@ fun createDataSource(config: WebappConfig) =
         password = config.dbPassword
     }
 
+/**
+ * Runs Flyway migrations on the provided datasource.
+ *
+ * @param dataSource The JDBC datasource to migrate.
+ * @return The Flyway [MigrateResult].
+ */
 fun migrateDataSource(dataSource: DataSource): MigrateResult =
     Flyway.configure()
         .dataSource(dataSource)
@@ -208,6 +259,12 @@ fun migrateDataSource(dataSource: DataSource): MigrateResult =
         .load()
         .migrate()
 
+/**
+ * Loads and parses the application configuration for the given environment.
+ *
+ * @param env The environment name (e.g., 'local', 'prod', 'test').
+ * @return The parsed [WebappConfig].
+ */
 fun createAppConfig(env: String) =
     ConfigFactory
         .parseResources("app-${env}.conf")
