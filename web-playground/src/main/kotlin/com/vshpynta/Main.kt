@@ -12,16 +12,30 @@ import com.vshpynta.web.dto.PublicUser
 import com.vshpynta.web.ktor.webResponse
 import com.vshpynta.web.ktor.webResponseDb
 import com.zaxxer.hikari.HikariDataSource
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.get
+import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotliquery.Session
 import kotliquery.queryOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
@@ -46,9 +60,32 @@ fun main() {
     val dataSource = createAndMigrateDataSource(appConfig)
     log.debug("Database connection pool initialized: {}", dataSource)
 
+    // Start a simple third-party service to demonstrate coroutine usage
+    startThirdPartyService()
+
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort, module = { module(dataSource) })
         .start(wait = true)
+}
+
+fun startThirdPartyService() {
+    embeddedServer(Netty, port = 9876) {
+        routing {
+            get("/random_number", webResponse {
+                val num = (200L..2000L).random()
+                delay(num)
+                TextWebResponse(num.toString())
+            })
+
+            get("/ping", webResponse {
+                TextWebResponse("pong")
+            })
+
+            post("/reverse", webResponse {
+                TextWebResponse(call.receiveText().reversed())
+            })
+        }
+    }.start(wait = false)
 }
 
 /**
@@ -110,7 +147,48 @@ private fun Routing.helloWorldRoutes(dataSource: DataSource) {
                 ?.let { PublicUser.fromDomain(it) }
         )
     })
+
+    get("/coroutine_demo", webResponseDb(dataSource) { dbSession ->
+        handleCoroutineDemo(dbSession)
+    })
 }
+
+suspend fun handleCoroutineDemo(dbSession: Session) =
+    coroutineScope {
+        val client = HttpClient(CIO)
+        val randomNumberRequest = async {
+            client.get("http://localhost:9876/random_number").bodyAsText()
+        }
+
+        val reverseRequest = async {
+            client.post("http://localhost:9876/reverse") {
+                setBody(randomNumberRequest.await())
+            }.bodyAsText()
+        }
+
+        val queryOperation = async {
+            val pingPong = client.get("http://localhost:9876/ping").bodyAsText()
+
+            // Perform blocking DB operation in IO dispatcher (Kotliquery uses blocking JDBC calls)
+            withContext(Dispatchers.IO) {
+                dbSession.single(
+                    queryOf(
+                        "SELECT count(*) c from user_table WHERE email != ?",
+                        pingPong
+                    ),
+                    ::mapFromRow
+                )
+            }
+        }
+
+        TextWebResponse(
+            """
+            Random number: ${randomNumberRequest.await()}
+            Reversed: ${reverseRequest.await()}
+            Query: ${queryOperation.await()}
+        """.trimIndent()
+        )
+    }
 
 fun createAndMigrateDataSource(config: WebappConfig) =
     createDataSource(config).also(::migrateDataSource)

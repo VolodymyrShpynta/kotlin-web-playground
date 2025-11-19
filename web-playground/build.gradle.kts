@@ -21,7 +21,7 @@ repositories {
 dependencies {
     // Import Ktor BOM (Bill of Materials)
     // This ensures all Ktor modules use the same version (3.3.1) without specifying it individually.
-    implementation(platform("io.ktor:ktor-bom:3.3.1"))
+    implementation(platform("io.ktor:ktor-bom:3.3.2"))
 
     // Ktor server runtime modules (version managed by BOM)
     implementation("io.ktor:ktor-server-core-jvm")    // Core server APIs
@@ -29,9 +29,11 @@ dependencies {
 
     implementation("io.ktor:ktor-server-status-pages")
 
+    implementation("io.ktor:ktor-client-core") // Ktor client core module
+    implementation("io.ktor:ktor-client-cio") // CIO engine for Ktor client
+
     // Ktor testing and client modules (also version-managed by BOM)
     testImplementation("io.ktor:ktor-server-test-host-jvm") // In-memory test host for fast HTTP tests
-    testImplementation("io.ktor:ktor-client-cio-jvm")       // CIO client for integration/smoke tests
 
     // Logging dependencies
     implementation("ch.qos.logback:logback-classic:1.5.20")
