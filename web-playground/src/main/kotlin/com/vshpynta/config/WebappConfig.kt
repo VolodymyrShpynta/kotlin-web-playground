@@ -10,10 +10,12 @@ package com.vshpynta.config
  * @property dbUrl JDBC URL for the primary data source.
  * @property dbUser Database username (empty for H2 test usage).
  * @property dbPassword Database password (empty for H2 test usage).
+ * @property useFileSystemAssets Flag to serve static assets from the file system (true in local, false in prod).
  */
 data class WebappConfig(
     val httpPort: Int,
     val dbUrl: String,
     val dbUser: String,
-    val dbPassword: String
+    val dbPassword: String,
+    val useFileSystemAssets: Boolean
 )

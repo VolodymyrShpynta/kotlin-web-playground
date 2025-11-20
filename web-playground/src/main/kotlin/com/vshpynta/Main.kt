@@ -22,11 +22,15 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.html.respondHtml
+import io.ktor.server.http.content.staticFiles
+import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -35,11 +39,17 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.html.body
+import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.styleLink
+import kotlinx.html.title
 import kotliquery.Session
 import kotliquery.queryOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
+import java.io.File
 import javax.sql.DataSource
 
 private val log = LoggerFactory.getLogger("com.vshpynta.Main")
@@ -69,8 +79,9 @@ fun main() {
     startThirdPartyService()
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
-    embeddedServer(Netty, port = appConfig.httpPort, module = { module(dataSource) })
-        .start(wait = true)
+    embeddedServer(Netty, port = appConfig.httpPort) {
+        module(appConfig, dataSource)
+    }.start(wait = true)
 }
 
 /**
@@ -106,9 +117,13 @@ fun startThirdPartyService() {
  * Ktor application module installed both in production (via `main`) and tests (via testApplication {}).
  * Put feature installs, routing, dependency wiring, etc., here.
  *
+ * @param webappConfig The application configuration.
  * @param dataSource The configured JDBC datasource for database access.
  */
-fun Application.module(dataSource: DataSource) {
+fun Application.module(
+    webappConfig: WebappConfig,
+    dataSource: DataSource
+) {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             log.error("An unknown error occurred", cause)
@@ -121,7 +136,7 @@ fun Application.module(dataSource: DataSource) {
 
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
-        helloWorldRoutes(dataSource)
+        helloWorldRoutes(webappConfig, dataSource)
     }
 }
 
@@ -137,9 +152,21 @@ fun Application.module(dataSource: DataSource) {
  * - GET /db_get_user: returns the first user from the DB as a public DTO
  * - GET /coroutine_demo: demonstrates async HTTP and DB calls
  *
+ * @param webappConfig The application configuration.
  * @param dataSource The JDBC datasource for DB-backed endpoints.
  */
-private fun Routing.helloWorldRoutes(dataSource: DataSource) {
+private fun Routing.helloWorldRoutes(
+    webappConfig: WebappConfig,
+    dataSource: DataSource
+) {
+    if (webappConfig.useFileSystemAssets) {
+        // Serve static files from filesystem 'src/main/resources/public' at root path
+        staticFiles("/", File("src/main/resources/public"))
+    } else {
+        // Serve static resources from 'public' at root path
+        staticResources("/", "public")
+    }
+
     get("/", webResponse {
         TextWebResponse("Hello, World!")
     })
@@ -177,6 +204,10 @@ private fun Routing.helloWorldRoutes(dataSource: DataSource) {
     get("/coroutine_demo", webResponseDb(dataSource) { dbSession ->
         handleCoroutineDemo(dbSession)
     })
+
+    get("/html_demo") {
+        htmlDemoResponseBuilder()
+    }
 }
 
 /**
@@ -222,6 +253,18 @@ suspend fun handleCoroutineDemo(dbSession: Session) =
         """.trimIndent()
         )
     }
+
+private suspend fun RoutingContext.htmlDemoResponseBuilder() {
+    call.respondHtml {
+        head {
+            title("Hello, World!")
+            styleLink("/css/app.css")
+        }
+        body {
+            h1 { +"Hello, World!" }
+        }
+    }
+}
 
 /**
  * Creates and migrates a HikariCP datasource using Flyway.
@@ -275,6 +318,7 @@ fun createAppConfig(env: String) =
                 httpPort = it.getInt("httpPort"),
                 dbUrl = it.getString("db.url"),
                 dbUser = it.getString("db.user"),
-                dbPassword = it.getString("db.password")
+                dbPassword = it.getString("db.password"),
+                useFileSystemAssets = it.getBoolean("useFileSystemAssets")
             )
         }

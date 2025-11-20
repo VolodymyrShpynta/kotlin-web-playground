@@ -49,7 +49,9 @@ class SmokeIntegrationTest {
         // Ensure schema & default user exist before hitting DB-backed routes
         dataSource = createAndMigrateDataSource(appConfig)
         port = ServerSocket(0).use { it.localPort } // Ephemeral free port
-        server = embeddedServer(Netty, port = port) { module(dataSource) }.start(wait = false)
+        server = embeddedServer(Netty, port = port) {
+            module(appConfig, dataSource)
+        }.start(wait = false)
         client = HttpClient(CIO)
     }
 
