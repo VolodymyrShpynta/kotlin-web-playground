@@ -1,5 +1,8 @@
 package com.vshpynta.web
 
+import io.ktor.server.html.Template
+import kotlinx.html.HTML
+
 /**
  * Polymorphic abstraction over HTTP response payloads used by routing helpers.
  *
@@ -14,6 +17,7 @@ package com.vshpynta.web
 sealed class WebResponse {
     /** HTTP status code (e.g. 200, 404). */
     abstract val statusCode: Int
+
     /** Raw header map preserving insertion order of values for each key. */
     abstract val headers: Map<String, List<String>>
 
@@ -85,3 +89,15 @@ data class JsonWebResponse(
         copy(body = body, statusCode = statusCode, headers = headers)
 }
 
+/** HTML response wrapper using Ktor HTML templates. */
+data class HtmlWebResponse(
+    val body: Template<HTML>,
+    override val statusCode: Int = 200,
+    override val headers: Map<String, List<String>> = mapOf()
+) : WebResponse() {
+    override fun copyResponse(
+        statusCode: Int,
+        headers: Map<String, List<String>>
+    ): WebResponse =
+        copy(body = body, statusCode = statusCode, headers = headers)
+}

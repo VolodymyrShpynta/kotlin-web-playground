@@ -1,9 +1,11 @@
 package com.vshpynta.web.ktor
 
+import com.vshpynta.web.HtmlWebResponse
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.WebResponse
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.html.respondHtml
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -38,6 +40,7 @@ fun webResponse(
     when (resp) {
         is TextWebResponse -> call.respondText(resp.body, status = statusCode)
         is JsonWebResponse -> call.respond(KtorJsonWebResponse(resp.body, statusCode))
+        is HtmlWebResponse -> call.respondHtml(statusCode) { with(resp.body) { apply() } }
     }
 }
 
