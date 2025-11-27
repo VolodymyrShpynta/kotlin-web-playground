@@ -9,6 +9,7 @@ import com.vshpynta.model.User
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.dto.PublicUser
+import com.vshpynta.web.html.AppLayout
 import com.vshpynta.web.ktor.webResponse
 import com.vshpynta.web.ktor.webResponseDb
 import com.zaxxer.hikari.HikariDataSource
@@ -22,7 +23,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.html.respondHtml
+import io.ktor.server.html.respondHtmlTemplate
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
@@ -39,11 +40,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import kotlinx.html.body
 import kotlinx.html.h1
-import kotlinx.html.head
-import kotlinx.html.styleLink
-import kotlinx.html.title
 import kotliquery.Session
 import kotliquery.queryOf
 import org.flywaydb.core.Flyway
@@ -255,13 +252,11 @@ suspend fun handleCoroutineDemo(dbSession: Session) =
     }
 
 private suspend fun RoutingContext.htmlDemoResponseBuilder() {
-    call.respondHtml {
-        head {
-            title("Hello, World!")
-            styleLink("/css/app.css")
-        }
-        body {
-            h1 { +"Hello, World!" }
+    call.respondHtmlTemplate(AppLayout("Hello, world!")) {
+        pageBody {
+            h1 {
+                +"Hello, World!"
+            }
         }
     }
 }
