@@ -3,9 +3,10 @@ package com.vshpynta.db
 import com.vshpynta.createAppConfig
 import com.vshpynta.createDataSource
 import com.vshpynta.migrateDataSource
+import com.vshpynta.service.createUser
+import com.vshpynta.service.findUsersByEmail
+import com.vshpynta.service.userCount
 import com.zaxxer.hikari.HikariDataSource
-import kotliquery.Session
-import kotliquery.TransactionalSession
 import kotliquery.queryOf
 import kotliquery.sessionOf
 import org.flywaydb.core.api.output.MigrateResult
@@ -401,9 +402,10 @@ class DatabaseTest {
         val initialCount = userCount()
 
         // When: transaction creates two distinct users inside testTx (auto-rollback on exit)
-        testTx { txSession ->
+        testTx(dataSource) { txSession ->
             val userAId = createUser(txSession, email = "augustlill@me.com").getOrThrow() ?: fail("Create user failed")
-            val userBId = createUser(txSession, email = "august_@augustl.com").getOrThrow() ?: fail("Create user failed")
+            val userBId =
+                createUser(txSession, email = "august_@augustl.com").getOrThrow() ?: fail("Create user failed")
             assertNotEquals(userAId, userBId)
             // Then (inside scope): count increased, both users visible
             val inTxCount = userCount(txSession)
@@ -422,15 +424,6 @@ class DatabaseTest {
     // ----------------------------------------------------------------------
 
     /**
-     * Reusable parameterized INSERT statement used by [createUser] helper methods.
-     * Keeps SQL definition centralized for consistency and easier refactoring.
-     */
-    private val insertUserSql = """
-        INSERT INTO user_table (email, password_hash, name, tos_accepted)
-        VALUES (?, ?, ?, ?)
-    """.trimIndent()
-
-    /**
      * Convenience helper to insert a user using a short‑lived session. Returns a [Result] capturing
      * success (generated key) or failure (constraint violations, etc.). Prefer this in tests where
      * transactional composition is not required.
@@ -442,25 +435,6 @@ class DatabaseTest {
         tosAccepted: Boolean? = true
     ): Result<Long?> = sessionOf(dataSource, returnGeneratedKey = true).use { session ->
         createUser(session, email, name, password, tosAccepted)
-    }
-
-    /**
-     * Low-level insert using an existing [Session] (can be transactional). Accepts nullable password
-     * to exercise NOT NULL constraint test paths. Returns generated key or failure wrapped in [Result].
-     */
-    private fun createUser(
-        session: Session,
-        email: String,
-        name: String = "August Lilleaas",
-        passwordText: String? = "1234",
-        tosAccepted: Boolean? = true
-    ): Result<Long?> {
-        val passwordHash = passwordText?.toByteArray()
-        return runCatching {
-            session.updateAndReturnGeneratedKey(
-                queryOf(insertUserSql, email, passwordHash, name, tosAccepted)
-            )
-        }
     }
 
     /**
@@ -479,21 +453,9 @@ class DatabaseTest {
         sessionOf(dataSource).use { session -> findUsersByEmail(session, email) }
 
     /**
-     * Session-aware variant of [findUsersByEmail] that does not close the provided session (useful inside transactions).
-     */
-    private fun findUsersByEmail(session: Session, email: String): List<Map<String, Any?>> =
-        session.list(queryOf("SELECT * FROM user_table WHERE email = ?", email), ::mapFromRow)
-
-    /**
      * Returns total row count in user_table using a new session. Delegates to the session variant.
      */
     private fun userCount(): Long = sessionOf(dataSource).use(::userCount)
-
-    /**
-     * Session-aware row count for reuse within transactional test scopes (avoids opening extra sessions).
-     */
-    private fun userCount(session: Session): Long =
-        session.single(queryOf("SELECT COUNT(*) AS c FROM user_table"), ::mapFromRow)!!["c"] as Long
 
     /**
      * Updates a user's name by id. Returns affected row count (0 if id does not exist). Opens a short-lived session.
@@ -505,33 +467,5 @@ class DatabaseTest {
                 mapOf("name" to newName, "id" to id)
             )
         )
-    }
-
-    /**
-     * Test harness executing [handler] inside a JDBC transaction and ALWAYS rolling back afterwards.
-     *
-     * Implementation detail: uses Kotliquery's transaction support then explicitly calls `rollback()`
-     * on the underlying connection in a finally block ensuring no changes persist even if the handler
-     * completes normally.
-     *
-     * Use Cases:
-     *  - Verifying isolation and visibility of uncommitted changes.
-     *  - Creating deterministic starting points without cleanup code.
-     *
-     * Notes:
-     *  - Do not nest calls to testTx unless you fully understand underlying driver transaction semantics.
-     *  - Exceptions inside the handler still trigger rollback (redundant but harmless) before propagating.
-     */
-    fun testTx(handler: (TransactionalSession) -> Unit) {
-        sessionOf(dataSource, returnGeneratedKey = true)
-            .use { dbSession ->
-                dbSession.transaction { txSession ->
-                    try {
-                        handler(txSession)
-                    } finally {
-                        dbSession.connection.rollback()
-                    }
-                }
-            }
     }
 }

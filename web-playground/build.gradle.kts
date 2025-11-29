@@ -59,6 +59,9 @@ dependencies {
     // Kotliquery for type-safe SQL querying
     implementation("com.github.seratch:kotliquery:1.9.1")
 
+    // BCrypt for password hashing
+    implementation("at.favre.lib:bcrypt:0.10.2")
+
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))

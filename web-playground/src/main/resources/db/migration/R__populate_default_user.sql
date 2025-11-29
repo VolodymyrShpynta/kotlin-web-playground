@@ -7,4 +7,5 @@
 MERGE INTO user_table (email, password_hash, name, tos_accepted)
 KEY (email)
 VALUES
-  ('vshpynta@crud.business', '456def', 'Volodymyr Shpynta', true);
+-- Password (1234) is hashed using a com.vshpynta.security.hashPasswordAsHex function.
+  ('vshpynta@crud.business', x'243261243130244d4f7652486f303059764d3946415942364834374a656e454b5768706e665863644b48634152597a68535459396a704b594677456d', 'Volodymyr Shpynta', true);

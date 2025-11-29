@@ -6,6 +6,7 @@ import com.vshpynta.config.WebappConfig
 import com.vshpynta.db.mapFromRow
 import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
+import com.vshpynta.web.HtmlWebResponse
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.dto.PublicUser
@@ -23,6 +24,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.html.Template
 import io.ktor.server.html.respondHtmlTemplate
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.http.content.staticResources
@@ -40,7 +42,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.html.HTML
+import kotlinx.html.body
 import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.title
 import kotliquery.Session
 import kotliquery.queryOf
 import org.flywaydb.core.Flyway
@@ -205,6 +211,29 @@ private fun Routing.helloWorldRoutes(
     get("/html_demo") {
         htmlDemoResponseBuilder()
     }
+
+    get("/html_webresponse_demo", webResponse {
+        HtmlWebResponse(AppLayout("Hello, world!").apply {
+            pageBody {
+                h1 {
+                    +"Hello, readers!"
+                }
+            }
+        })
+    })
+
+    get("/html_webresponse_nolayout_demo", webResponse {
+        HtmlWebResponse(object : Template<HTML> { // Anonymous Template without layout
+            override fun HTML.apply() {
+                head {
+                    title { +"Plain HTML here! " }
+                }
+                body {
+                    h1 { +"Very plan header" }
+                }
+            }
+        })
+    })
 }
 
 /**
