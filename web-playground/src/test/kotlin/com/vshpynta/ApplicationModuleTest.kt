@@ -33,7 +33,7 @@ class ApplicationModuleTest {
     @Test
     fun shouldReturnHelloWorldOnRootGet() = testApplication {
         // Given: application module installed and root endpoint
-        application { module(appConfig, dataSource) } // use production wiring
+        application { setUpKtorApplication(appConfig, dataSource) } // use production wiring
 
         // When: client performs GET request
         val res = client.get("/")
@@ -47,7 +47,7 @@ class ApplicationModuleTest {
     @Test
     fun shouldReturnSingleSelectResultFromDbTestEndpointUsingTestApplication() = testApplication {
         // Given: application module installed exposing /db_test
-        application { module(appConfig, dataSource) }
+        application { setUpKtorApplication(appConfig, dataSource) }
 
         // When
         val res = client.get("/db_test")

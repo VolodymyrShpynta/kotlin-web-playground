@@ -6,6 +6,10 @@ import com.vshpynta.config.WebappConfig
 import com.vshpynta.db.mapFromRow
 import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
+import com.vshpynta.security.UserSession
+import com.vshpynta.service.authenticateUser
+import com.vshpynta.service.findUserById
+import com.vshpynta.web.HtmlWebResponse
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
 import com.vshpynta.web.dto.PublicUser
@@ -22,32 +26,65 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.principal
+import io.ktor.server.auth.session
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.html.Template
 import io.ktor.server.html.respondHtmlTemplate
 import io.ktor.server.http.content.staticFiles
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import io.ktor.server.sessions.SessionTransportTransformerEncrypt
+import io.ktor.server.sessions.Sessions
+import io.ktor.server.sessions.clear
+import io.ktor.server.sessions.cookie
+import io.ktor.server.sessions.maxAge
+import io.ktor.server.sessions.sessions
+import io.ktor.server.sessions.set
+import io.ktor.util.hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.html.ButtonType
+import kotlinx.html.FormMethod
+import kotlinx.html.HTML
+import kotlinx.html.InputType
+import kotlinx.html.a
+import kotlinx.html.body
+import kotlinx.html.button
+import kotlinx.html.form
 import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.input
+import kotlinx.html.label
+import kotlinx.html.p
+import kotlinx.html.title
 import kotliquery.Session
 import kotliquery.queryOf
+import kotliquery.sessionOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
 import java.io.File
 import javax.sql.DataSource
+import kotlin.time.Duration
+
+private const val USER_SESSION_COOKIE_NAME = "user-session"
+private const val SESSION_AUTH_PROVIDER = "auth-session"
 
 private val log = LoggerFactory.getLogger("com.vshpynta.Main")
 
@@ -58,7 +95,7 @@ private val log = LoggerFactory.getLogger("com.vshpynta.Main")
  * - Starts a demo third-party service for coroutine examples.
  * - Launches the main Ktor server on the configured port.
  *
- * Delegates configuration to [Application.module] for testability and separation of concerns.
+ * Delegates configuration to [Application.setUpKtorApplication] for testability and separation of concerns.
  */
 fun main() {
     log.debug("Starting web-playground application...")
@@ -77,7 +114,8 @@ fun main() {
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort) {
-        module(appConfig, dataSource)
+        setUpKtorCookieSecurity(appConfig, dataSource)
+        setUpKtorApplication(appConfig, dataSource)
     }.start(wait = true)
 }
 
@@ -117,7 +155,7 @@ fun startThirdPartyService() {
  * @param webappConfig The application configuration.
  * @param dataSource The configured JDBC datasource for database access.
  */
-fun Application.module(
+fun Application.setUpKtorApplication(
     webappConfig: WebappConfig,
     dataSource: DataSource
 ) {
@@ -134,6 +172,113 @@ fun Application.module(
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
         helloWorldRoutes(webappConfig, dataSource)
+    }
+}
+
+/**
+ * Configures Ktor cookie-based session security with encryption and signing.
+ *
+ * @param appConfig The application configuration.
+ * @param dataSource The JDBC datasource (not used here but could be for session storage).
+ */
+fun Application.setUpKtorCookieSecurity(
+    appConfig: WebappConfig,
+    dataSource: DataSource
+) {
+    // Configure cookie-based sessions with encryption and signing
+    install(Sessions) {
+        cookie<UserSession>(USER_SESSION_COOKIE_NAME) {
+            transform(
+                SessionTransportTransformerEncrypt(
+                    hex(appConfig.cookieEncryptionKey),
+                    hex(appConfig.cookieSigningKey)
+                )
+            )
+            cookie.maxAge = Duration.parse("1d")
+            cookie.httpOnly = true
+            cookie.path = "/" // Cookie valid for entire site
+            cookie.secure = appConfig.useSecureCookie // Use secure cookies in production
+            cookie.extensions["SameSite"] = "lax" // Mitigate CSRF (Cross-Site Request Forgery) for modern browsers
+        }
+    }
+
+    // Set up authentication feature with session validation
+    install(Authentication) {
+        session<UserSession>(SESSION_AUTH_PROVIDER) {
+            // Validate that session exists; more complex validation can be added here
+            validate { session ->
+                session
+            }
+            // Redirect to /login if not authenticated
+            challenge {
+                call.respondRedirect("/login")
+            }
+        }
+    }
+
+    routing {
+        get("/login", webResponse {
+            HtmlWebResponse(AppLayout("Log in").apply {
+                pageBody {
+                    form(method = FormMethod.post, action = "/login") {
+                        p {
+                            label { +"E-mail" }
+                            input(type = InputType.text, name = "username")
+                        }
+                        p {
+                            label { +"Password" }
+                            input(type = InputType.password, name = "password")
+                        }
+                        button(type = ButtonType.submit) { +"Log in" }
+                    }
+                }
+            })
+        })
+
+        post("/login") {
+            sessionOf(dataSource).use { dbSession ->
+                val params = call.receiveParameters()
+                val userId = authenticateUser(
+                    dbSession,
+                    params["username"]!!,
+                    params["password"]!!
+                )
+                if (userId == null) {
+                    // Authentication failed - redirect back to /login
+                    call.respondRedirect("/login")
+                } else {
+                    // Store authenticated user in session
+                    // No name parameter needed - Ktor uses the UserSession type mapped to USER_SESSION_COOKIE_NAME cookie name above
+                    call.sessions.set(UserSession(userId = userId))
+                    call.respondRedirect("/secret")
+                }
+            }
+        }
+
+        authenticate(SESSION_AUTH_PROVIDER) { // Protect routes with session authentication
+            get("/secret", webResponseDb(dataSource) { dbSession ->
+                val userSession = call.principal<UserSession>()!! // Guaranteed to be non-null due to authentication
+                val user = findUserById(dbSession, userSession.userId)!! // Should exist if session is valid
+                HtmlWebResponse(
+                    AppLayout("Welcome, ${user.email}").apply {
+                        pageBody {
+                            h1 {
+                                +"Hello there, ${user.email}"
+                            }
+                            p { +"You're logged in." }
+                            p {
+                                a(href = "/logout") { +"Log out" }
+                            }
+                        }
+                    }
+                )
+            })
+
+            get("/logout") {
+                call.sessions.clear<UserSession>()
+                call.respondRedirect("/login")
+            }
+        }
     }
 }
 
@@ -205,6 +350,29 @@ private fun Routing.helloWorldRoutes(
     get("/html_demo") {
         htmlDemoResponseBuilder()
     }
+
+    get("/html_webresponse_demo", webResponse {
+        HtmlWebResponse(AppLayout("Hello, world!").apply {
+            pageBody {
+                h1 {
+                    +"Hello, readers!"
+                }
+            }
+        })
+    })
+
+    get("/html_webresponse_nolayout_demo", webResponse {
+        HtmlWebResponse(object : Template<HTML> { // Anonymous Template without layout
+            override fun HTML.apply() {
+                head {
+                    title { +"Plain HTML here! " }
+                }
+                body {
+                    h1 { +"Very plan header" }
+                }
+            }
+        })
+    })
 }
 
 /**
@@ -314,6 +482,9 @@ fun createAppConfig(env: String) =
                 dbUrl = it.getString("db.url"),
                 dbUser = it.getString("db.user"),
                 dbPassword = it.getString("db.password"),
-                useFileSystemAssets = it.getBoolean("useFileSystemAssets")
+                useFileSystemAssets = it.getBoolean("useFileSystemAssets"),
+                useSecureCookie = it.getBoolean("useSecureCookie"),
+                cookieEncryptionKey = it.getString("cookieEncryptionKey"),
+                cookieSigningKey = it.getString("cookieSigningKey")
             )
         }

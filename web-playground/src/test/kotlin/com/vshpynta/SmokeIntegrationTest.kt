@@ -50,7 +50,7 @@ class SmokeIntegrationTest {
         dataSource = createAndMigrateDataSource(appConfig)
         port = ServerSocket(0).use { it.localPort } // Ephemeral free port
         server = embeddedServer(Netty, port = port) {
-            module(appConfig, dataSource)
+            setUpKtorApplication(appConfig, dataSource)
         }.start(wait = false)
         client = HttpClient(CIO)
     }

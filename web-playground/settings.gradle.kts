@@ -3,6 +3,8 @@ pluginManagement {
     plugins {
         // Kotlin JVM plugin version. Bump here to upgrade Kotlin (e.g., "2.3.0" when released)
         kotlin("jvm") version "2.2.20"
+        // Kotlin Serialization plugin version (should match Kotlin version)
+        kotlin("plugin.serialization") version "2.2.20"
     }
 }
 

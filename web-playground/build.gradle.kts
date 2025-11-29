@@ -1,6 +1,8 @@
 plugins {
     // Kotlin JVM plugin (version set in settings.gradle.kts via pluginManagement)
     kotlin("jvm")
+    // Kotlin Serialization plugin (version set in settings.gradle.kts via pluginManagement)
+    kotlin("plugin.serialization")
     // Application plugin provides run, installDist, distZip tasks
     application
 }
@@ -34,6 +36,9 @@ dependencies {
 
     implementation("io.ktor:ktor-server-html-builder") // HTML DSL for building HTML responses
 
+    implementation("io.ktor:ktor-server-auth") // Authentication support
+    implementation("io.ktor:ktor-server-sessions") // Session management support
+
     // Ktor testing and client modules (also version-managed by BOM)
     testImplementation("io.ktor:ktor-server-test-host-jvm") // In-memory test host for fast HTTP tests
 
@@ -58,6 +63,9 @@ dependencies {
 
     // Kotliquery for type-safe SQL querying
     implementation("com.github.seratch:kotliquery:1.9.1")
+
+    // BCrypt for password hashing
+    implementation("at.favre.lib:bcrypt:0.10.2")
 
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))

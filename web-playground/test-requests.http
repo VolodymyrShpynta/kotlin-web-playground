@@ -1,0 +1,74 @@
+### Root endpoint - Returns "Hello, World!"
+GET http://127.0.0.1:4207/
+
+###
+
+### Param test - Echoes query parameter 'foo'
+GET http://127.0.0.1:4207/param_test?foo=test_value
+
+###
+
+### JSON test - Returns simple JSON object
+GET http://127.0.0.1:4207/json_test
+
+###
+
+### JSON test with custom header
+GET http://127.0.0.1:4207/json_test_with_header
+
+###
+
+### Database test - Simple DB query
+GET http://127.0.0.1:4207/db_test
+
+###
+
+### Get user from database - Returns first user as PublicUser
+GET http://127.0.0.1:4207/db_get_user
+
+###
+
+### Coroutine demo - Demonstrates async HTTP and DB calls
+GET http://127.0.0.1:4207/coroutine_demo
+
+###
+
+### HTML demo - HTML template response
+GET http://127.0.0.1:4207/html_demo
+
+###
+
+### HTML WebResponse demo - HTML with AppLayout
+GET http://127.0.0.1:4207/html_webresponse_demo
+
+###
+
+### HTML WebResponse no layout demo - Plain HTML
+GET http://127.0.0.1:4207/html_webresponse_nolayout_demo
+
+###
+
+### Login (GET - shows login form)
+GET http://127.0.0.1:4207/login
+
+###
+
+### Login (POST - submit credentials)
+# Note: Uses 'username' (not 'email') and 'password'
+POST http://127.0.0.1:4207/login
+Content-Type: application/x-www-form-urlencoded
+
+username=vshpynta@crud.business&password=1234
+
+###
+
+### Secret page (requires authentication)
+# Note: includes session cookie from login response
+GET http://127.0.0.1:4207/secret
+Cookie: user-session=276cb154cc10f635cb433e68624dc45f%2Fafdbf172983c404a9a99d0fa71b584fa%3A32150c2af0dc68780be5dfbc2b0753aeea0b2f11adf3c7022afdf9fccc21ad26
+###
+
+### Logout - Clears session and redirects to login
+GET http://127.0.0.1:4207/logout
+
+###

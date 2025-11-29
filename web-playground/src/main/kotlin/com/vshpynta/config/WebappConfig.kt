@@ -17,5 +17,8 @@ data class WebappConfig(
     val dbUrl: String,
     val dbUser: String,
     val dbPassword: String,
-    val useFileSystemAssets: Boolean
+    val useFileSystemAssets: Boolean,
+    val useSecureCookie: Boolean,
+    val cookieEncryptionKey: String,
+    val cookieSigningKey: String
 )
