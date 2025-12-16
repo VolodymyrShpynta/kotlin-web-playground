@@ -1,4 +1,4 @@
-package com.vshpynta.web.ktor
+package com.vshpynta.web.serialization
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder

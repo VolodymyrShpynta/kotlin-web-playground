@@ -1,7 +1,7 @@
 package com.vshpynta
 
 import com.vshpynta.web.dto.PublicUser
-import com.vshpynta.web.ktor.GsonProvider
+import com.vshpynta.web.serialization.GsonProvider
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get

@@ -31,7 +31,7 @@ private val insertUserSql = """
 fun createUser(
     dbSession: Session,
     email: String,
-    name: String = "Volodymyr Shpynta",
+    name: String? = "Volodymyr Shpynta",
     passwordText: String? = "1234",
     tosAccepted: Boolean? = true
 ): Result<Long?> {

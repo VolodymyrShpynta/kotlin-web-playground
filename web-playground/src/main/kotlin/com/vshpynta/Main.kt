@@ -1,5 +1,6 @@
 package com.vshpynta
 
+import arrow.core.raise.either
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
@@ -8,14 +9,19 @@ import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
 import com.vshpynta.security.UserSession
 import com.vshpynta.service.authenticateUser
+import com.vshpynta.service.createUser
 import com.vshpynta.service.findUserById
 import com.vshpynta.web.HtmlWebResponse
 import com.vshpynta.web.JsonWebResponse
 import com.vshpynta.web.TextWebResponse
+import com.vshpynta.web.dto.CreateUserRequest
 import com.vshpynta.web.dto.PublicUser
+import com.vshpynta.web.dto.ValidationError
 import com.vshpynta.web.html.AppLayout
 import com.vshpynta.web.ktor.webResponse
 import com.vshpynta.web.ktor.webResponseDb
+import com.vshpynta.web.serialization.GsonProvider
+import com.vshpynta.web.validation.validateCreateUserRequest
 import com.zaxxer.hikari.HikariDataSource
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
@@ -172,6 +178,7 @@ fun Application.setUpKtorApplication(
     routing {
         // Register simple hello world endpoint. More routes can be added similarly.
         helloWorldRoutes(webappConfig, dataSource)
+        apiRoutes(webappConfig, dataSource)
     }
 }
 
@@ -326,6 +333,13 @@ private fun Routing.helloWorldRoutes(
             .header("X-Test-Header", "Just a test!")
     })
 
+    post("/json_test", webResponse {
+        val input = GsonProvider.gson.fromJson(
+            call.receiveText(), Map::class.java
+        )
+        JsonWebResponse(mapOf("input" to input))
+    })
+
     get("/db_test", webResponseDb(dataSource) { dbSession ->
         JsonWebResponse(
             dbSession.single(queryOf("SELECT 1 as one"), ::mapFromRow)
@@ -373,6 +387,87 @@ private fun Routing.helloWorldRoutes(
             }
         })
     })
+}
+
+/**
+ * Defines the API HTTP endpoints.
+ *
+ * Endpoints:
+ * - GET /api/users/{id}: retrieves a user by ID
+ * - POST /api/users: creates a new user
+ *
+ * @param webappConfig The application configuration.
+ * @param dataSource The JDBC datasource for DB access.
+ */
+private fun Routing.apiRoutes(
+    webappConfig: WebappConfig,
+    dataSource: DataSource
+) {
+    // GET /api/users/{id} - get user by ID
+    get("/api/users/{id}", webResponseDb(dataSource) { dbSession ->
+        either {
+            val userId = call.parameters["id"]?.toLongOrNull()
+                ?: raise(ValidationError("Invalid user ID", 400))
+
+            findUserById(dbSession, userId)
+                ?: raise(ValidationError("User not found", 404))
+        }.fold(
+            { err -> JsonWebResponse(mapOf("error" to err.error), statusCode = err.statusCode) },
+            { user -> JsonWebResponse(PublicUser.fromDomain(user)) }
+        )
+    })
+
+    // POST /api/users - create a new user
+    post("/api/users", webResponse {
+        either {
+            // Deserialize the incoming JSON request body
+            val request = GsonProvider.gson.fromJson(
+                call.receiveText(),
+                CreateUserRequest::class.java
+            )
+
+            // Validate the deserialized object
+            val validRequest = validateCreateUserRequest(request).bind()
+
+            // Create user in database, converting Result failure to raised error
+            sessionOf(dataSource, returnGeneratedKey = true)
+                .use { dbSession ->
+                    createUser(
+                        dbSession,
+                        validRequest.email,
+                        validRequest.name,
+                        validRequest.password,
+                        validRequest.tosAccepted
+                    )
+                }
+                .getOrElse { exception -> raise(handleDatabaseException(exception)) }
+        }.fold(
+            { err -> JsonWebResponse(mapOf("error" to err.error), statusCode = err.statusCode) },
+            { userId -> JsonWebResponse(mapOf("userId" to userId), statusCode = 201) }
+        )
+    })
+}
+
+/**
+ * Converts a database exception to a ValidationError with an appropriate error message and status code.
+ * Handles common database constraint violations like unique constraint violations.
+ *
+ * @param exception The database exception to handle.
+ * @return ValidationError with a user-friendly message and HTTP status code.
+ */
+private fun handleDatabaseException(exception: Throwable): ValidationError {
+    log.error("Database operation failed", exception)
+
+    return when {
+        exception.message?.contains("unique", ignoreCase = true) == true
+                || exception.message?.contains("duplicate", ignoreCase = true) == true ->
+            ValidationError("User with this email already exists", 409)
+
+        exception.message?.contains("constraint", ignoreCase = true) == true ->
+            ValidationError("Invalid user data: ${exception.message}", 400)
+
+        else -> ValidationError("Failed to create user: ${exception.message}", 500)
+    }
 }
 
 /**

@@ -67,6 +67,10 @@ dependencies {
     // BCrypt for password hashing
     implementation("at.favre.lib:bcrypt:0.10.2")
 
+    // Arrow libraries for functional programming
+    implementation("io.arrow-kt:arrow-fx-coroutines:2.2.0")
+    implementation("io.arrow-kt:arrow-fx-stm:2.2.0")
+
     // Other dependencies (Kotlin stdlib, coroutines, etc.)
     implementation(kotlin("stdlib"))
     testImplementation(kotlin("test"))

@@ -18,6 +18,15 @@ GET http://127.0.0.1:4207/json_test_with_header
 
 ###
 
+### JSON test - POST request with JSON body
+POST http://127.0.0.1:4207/json_test
+Content-Type: application/json
+
+{
+  "message": "Hello, JSON!"
+}
+###
+
 ### Database test - Simple DB query
 GET http://127.0.0.1:4207/db_test
 
@@ -46,6 +55,22 @@ GET http://127.0.0.1:4207/html_webresponse_demo
 ### HTML WebResponse no layout demo - Plain HTML
 GET http://127.0.0.1:4207/html_webresponse_nolayout_demo
 
+###
+
+###
+GET http://127.0.0.1:4207/api/users/1
+###
+
+###
+POST http://127.0.0.1:4207/api/users
+Content-Type: application/json
+
+{
+  "email": "bob@crud.business",
+  "password": "securepassword",
+  "name": "Bob Builder",
+  "tosAccepted": true
+}
 ###
 
 ### Login (GET - shows login form)
