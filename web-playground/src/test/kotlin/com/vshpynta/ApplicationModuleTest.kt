@@ -29,14 +29,14 @@ class ApplicationModuleTest {
         dataSource = createDataSource(appConfig)
     }
 
-    @DisplayName("GET / returns Hello, World!")
+    @DisplayName("GET /api returns Hello, World!")
     @Test
     fun shouldReturnHelloWorldOnRootGet() = testApplication {
         // Given: application module installed and root endpoint
         application { setUpKtorApplication(appConfig, dataSource) } // use production wiring
 
         // When: client performs GET request
-        val res = client.get("/")
+        val res = client.get("/api")
 
         // Then: status and body match expected greeting
         assertEquals(HttpStatusCode.OK, res.status)
@@ -50,7 +50,7 @@ class ApplicationModuleTest {
         application { setUpKtorApplication(appConfig, dataSource) }
 
         // When
-        val res = client.get("/db_test")
+        val res = client.get("/api/db_test")
 
         // Then: verify status and JSON body. ContentType defaults to application/json in custom response helper
         assertEquals(HttpStatusCode.OK, res.status)

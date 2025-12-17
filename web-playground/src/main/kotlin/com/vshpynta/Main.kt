@@ -1,3 +1,23 @@
+/**
+ * Main application entry point and Ktor server configuration.
+ *
+ * This file contains:
+ * - Application startup logic with environment-based configuration
+ * - Ktor server setup with cookie-based session authentication
+ * - Route definitions for API endpoints (hello world, user management, auth)
+ * - Database connection pooling with HikariCP and Flyway migrations
+ * - Demo third-party service for showcasing coroutine-based HTTP calls
+ *
+ * The application uses functional error handling with Arrow's Either and Raise DSL,
+ * separating validation errors from database errors while maintaining a unified error flow.
+ *
+ * **URL Structure**
+ * All API endpoints use the `/api` prefix (e.g., `/api/users`, `/api/login`) to prevent
+ * conflicts with the Single Page Application (SPA) routing. The SPA serves `index.html`
+ * for all unmatched routes, enabling client-side routing for paths without the `/api` prefix.
+ * This clear separation allows the SPA to handle routes like `/`, `/about`, `/profile`,
+ * while backend API endpoints remain under `/api/<sub_url>`.
+ */
 package com.vshpynta
 
 import arrow.core.raise.either
@@ -39,8 +59,7 @@ import io.ktor.server.auth.session
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.html.Template
 import io.ktor.server.html.respondHtmlTemplate
-import io.ktor.server.http.content.staticFiles
-import io.ktor.server.http.content.staticResources
+import io.ktor.server.http.content.singlePageApplication
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receiveParameters
@@ -85,11 +104,19 @@ import kotliquery.sessionOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
-import java.io.File
 import javax.sql.DataSource
 import kotlin.time.Duration
 
+/**
+ * Cookie name used to store encrypted user session data.
+ * This name is used in the Sessions plugin configuration and matches the UserSession data class type.
+ */
 private const val USER_SESSION_COOKIE_NAME = "user-session"
+
+/**
+ * Authentication provider name used to protect routes requiring authentication.
+ * Referenced in both the Authentication plugin configuration and the authenticate() route wrapper.
+ */
 private const val SESSION_AUTH_PROVIDER = "auth-session"
 
 private val log = LoggerFactory.getLogger("com.vshpynta.Main")
@@ -176,9 +203,9 @@ fun Application.setUpKtorApplication(
     }
 
     routing {
-        // Register simple hello world endpoint. More routes can be added similarly.
-        helloWorldRoutes(webappConfig, dataSource)
-        apiRoutes(webappConfig, dataSource)
+        singlePageApplicationRoutes(webappConfig)
+        helloWorldApiRoutes(dataSource)
+        userApiRoutes(dataSource)
     }
 }
 
@@ -211,23 +238,30 @@ fun Application.setUpKtorCookieSecurity(
 
     // Set up authentication feature with session validation
     install(Authentication) {
+        // Configure session-based authentication with the SESSION_AUTH_PROVIDER name
+        // Routes wrapped with authenticate(SESSION_AUTH_PROVIDER) will require a valid session
         session<UserSession>(SESSION_AUTH_PROVIDER) {
-            // Validate that session exists; more complex validation can be added here
+            // Validate session - here we simply check it exists, but you could add:
+            // - Database lookup to verify user still exists
+            // - Check if user is active/not banned
+            // - Verify session hasn't been revoked
             validate { session ->
                 session
             }
-            // Redirect to /login if not authenticated
+            // Challenge function called when authentication fails (no session or validation fails)
+            // Redirects unauthenticated users to the login page
             challenge {
-                call.respondRedirect("/login")
+                call.respondRedirect("/api/login")
             }
         }
     }
 
     routing {
-        get("/login", webResponse {
+        // GET /api/login - Display login form
+        get("/api/login", webResponse {
             HtmlWebResponse(AppLayout("Log in").apply {
                 pageBody {
-                    form(method = FormMethod.post, action = "/login") {
+                    form(method = FormMethod.post, action = "/api/login") {
                         p {
                             label { +"E-mail" }
                             input(type = InputType.text, name = "username")
@@ -242,30 +276,48 @@ fun Application.setUpKtorCookieSecurity(
             })
         })
 
-        post("/login") {
+        // POST /api/login - Process login form submission
+        post("/api/login") {
             sessionOf(dataSource).use { dbSession ->
+                // Extract username (email) and password from form parameters
                 val params = call.receiveParameters()
+
+                // Authenticate user by checking email and password against database
+                // Returns user ID if credentials are valid, null otherwise
                 val userId = authenticateUser(
                     dbSession,
                     params["username"]!!,
                     params["password"]!!
                 )
+
                 if (userId == null) {
-                    // Authentication failed - redirect back to /login
-                    call.respondRedirect("/login")
+                    // Authentication failed - invalid credentials
+                    // TODO: Consider adding error message to session and displaying on login page
+                    call.respondRedirect("/api/login")
                 } else {
-                    // Store authenticated user in session
-                    // No name parameter needed - Ktor uses the UserSession type mapped to USER_SESSION_COOKIE_NAME cookie name above
+                    // Authentication successful - create encrypted session cookie
+                    // The cookie<UserSession>() configuration already maps the UserSession type to USER_SESSION_COOKIE_NAME
+                    // Ktor automatically encrypts, signs, and sets the cookie based on the Sessions configuration
                     call.sessions.set(UserSession(userId = userId))
-                    call.respondRedirect("/secret")
+
+                    // Redirect to protected page
+                    call.respondRedirect("/api/secret")
                 }
             }
         }
 
-        authenticate(SESSION_AUTH_PROVIDER) { // Protect routes with session authentication
-            get("/secret", webResponseDb(dataSource) { dbSession ->
-                val userSession = call.principal<UserSession>()!! // Guaranteed to be non-null due to authentication
-                val user = findUserById(dbSession, userSession.userId)!! // Should exist if session is valid
+        // Protected routes - require valid session (authenticate wrapper enforces this)
+        // If session is missing or invalid, the challenge block redirects to /api/login
+        authenticate(SESSION_AUTH_PROVIDER) {
+            // GET /api/secret - Protected page that displays user information
+            get("/api/secret", webResponseDb(dataSource) { dbSession ->
+                // Extract session from request - guaranteed non-null because authenticate() wrapper validates it
+                val userSession = call.principal<UserSession>()!!
+
+                // Fetch user details from database using session's user ID
+                val user = findUserById(dbSession, userSession.userId)!!
+
+                // Render HTML page with user information
                 HtmlWebResponse(
                     AppLayout("Welcome, ${user.email}").apply {
                         pageBody {
@@ -274,79 +326,108 @@ fun Application.setUpKtorCookieSecurity(
                             }
                             p { +"You're logged in." }
                             p {
-                                a(href = "/logout") { +"Log out" }
+                                a(href = "/api/logout") { +"Log out" }
                             }
                         }
                     }
                 )
             })
 
-            get("/logout") {
+            // GET /api/logout - Clear session and redirect to login page
+            get("/api/logout") {
+                // Remove session cookie, effectively logging out the user
                 call.sessions.clear<UserSession>()
-                call.respondRedirect("/login")
+                call.respondRedirect("/api/login")
             }
         }
     }
 }
 
 /**
- * Defines the main HTTP endpoints for the playground application.
+ * Configures Single Page Application (SPA) routing.
  *
- * Endpoints:
- * - GET /: returns a static greeting
- * - GET /param_test: echoes a query parameter
- * - GET /json_test: returns a simple JSON object
- * - GET /json_test_with_header: returns JSON with a custom header
- * - GET /db_test: returns result of a simple DB query
- * - GET /db_get_user: returns the first user from the DB as a public DTO
- * - GET /coroutine_demo: demonstrates async HTTP and DB calls
+ * Serves static files and provides SPA fallback behavior - when a route is not matched
+ * by any defined endpoint, serves the default page (index.html). This allows client-side
+ * routing in SPAs to work correctly.
+ *
+ * **Important**: All API endpoints use the `/api` prefix to avoid conflicts with SPA routes.
+ * - Routes with `/api` prefix → handled by backend API endpoints
+ * - Routes without `/api` prefix → served by SPA (falls back to index.html)
+ *
+ * This pattern ensures that SPA client-side routes (e.g., `/home`, `/profile`, `/settings`)
+ * don't interfere with backend API routes (e.g., `/api/users`, `/api/login`).
  *
  * @param webappConfig The application configuration.
+ */
+private fun Routing.singlePageApplicationRoutes(
+    webappConfig: WebappConfig
+) {
+    singlePageApplication {
+        // In development mode, serve files from file system for hot-reload
+        // In production, serve from JAR resources
+        if (webappConfig.useFileSystemAssets) {
+            filesPath = "src/main/resources/public"
+        } else {
+            useResources = true
+            filesPath = "public"
+        }
+        // Default page served for unmatched routes (enables client-side routing)
+        defaultPage = "index.html"
+    }
+}
+
+/**
+ * Defines demo and hello world HTTP endpoints for the playground application.
+ *
+ * Endpoints:
+ * - GET /api: returns a static "Hello, World!" greeting
+ * - GET /api/param_test: echoes a query parameter
+ * - GET /api/json_test: returns a simple JSON object
+ * - POST /api/json_test: echoes back the posted JSON input
+ * - GET /api/json_test_with_header: returns JSON with a custom header
+ * - GET /api/db_test: returns result of a simple DB query
+ * - GET /api/db_get_user: returns the first user from the DB as a public DTO
+ * - GET /api/coroutine_demo: demonstrates async HTTP and DB calls with coroutines
+ * - GET /api/html_demo: demonstrates HTML templating with Ktor HTML DSL
+ * - GET /api/html_webresponse_demo: demonstrates custom HTML response with layout
+ * - GET /api/html_webresponse_nolayout_demo: demonstrates HTML response without layout
+ *
  * @param dataSource The JDBC datasource for DB-backed endpoints.
  */
-private fun Routing.helloWorldRoutes(
-    webappConfig: WebappConfig,
+private fun Routing.helloWorldApiRoutes(
     dataSource: DataSource
 ) {
-    if (webappConfig.useFileSystemAssets) {
-        // Serve static files from filesystem 'src/main/resources/public' at root path
-        staticFiles("/", File("src/main/resources/public"))
-    } else {
-        // Serve static resources from 'public' at root path
-        staticResources("/", "public")
-    }
-
-    get("/", webResponse {
+    get("/api", webResponse {
         TextWebResponse("Hello, World!")
     })
 
-    get("/param_test", webResponse {
+    get("/api/param_test", webResponse {
         TextWebResponse("The param is: ${call.request.queryParameters["foo"]}")
     })
 
-    get("/json_test", webResponse {
+    get("/api/json_test", webResponse {
         JsonWebResponse(mapOf("foo" to "bar"))
     })
 
-    get("/json_test_with_header", webResponse {
+    get("/api/json_test_with_header", webResponse {
         JsonWebResponse(mapOf("foo" to "bar"))
             .header("X-Test-Header", "Just a test!")
     })
 
-    post("/json_test", webResponse {
+    post("/api/json_test", webResponse {
         val input = GsonProvider.gson.fromJson(
             call.receiveText(), Map::class.java
         )
         JsonWebResponse(mapOf("input" to input))
     })
 
-    get("/db_test", webResponseDb(dataSource) { dbSession ->
+    get("/api/db_test", webResponseDb(dataSource) { dbSession ->
         JsonWebResponse(
             dbSession.single(queryOf("SELECT 1 as one"), ::mapFromRow)
         )
     })
 
-    get("/db_get_user", webResponseDb(dataSource) { dbSession ->
+    get("/api/db_get_user", webResponseDb(dataSource) { dbSession ->
         JsonWebResponse(
             dbSession.single(
                 queryOf("SELECT * FROM user_table"),
@@ -357,15 +438,15 @@ private fun Routing.helloWorldRoutes(
         )
     })
 
-    get("/coroutine_demo", webResponseDb(dataSource) { dbSession ->
+    get("/api/coroutine_demo", webResponseDb(dataSource) { dbSession ->
         handleCoroutineDemo(dbSession)
     })
 
-    get("/html_demo") {
+    get("/api/html_demo") {
         htmlDemoResponseBuilder()
     }
 
-    get("/html_webresponse_demo", webResponse {
+    get("/api/html_webresponse_demo", webResponse {
         HtmlWebResponse(AppLayout("Hello, world!").apply {
             pageBody {
                 h1 {
@@ -375,7 +456,7 @@ private fun Routing.helloWorldRoutes(
         })
     })
 
-    get("/html_webresponse_nolayout_demo", webResponse {
+    get("/api/html_webresponse_nolayout_demo", webResponse {
         HtmlWebResponse(object : Template<HTML> { // Anonymous Template without layout
             override fun HTML.apply() {
                 head {
@@ -390,17 +471,15 @@ private fun Routing.helloWorldRoutes(
 }
 
 /**
- * Defines the API HTTP endpoints.
+ * Defines the API HTTP endpoints for user management.
  *
  * Endpoints:
  * - GET /api/users/{id}: retrieves a user by ID
  * - POST /api/users: creates a new user
  *
- * @param webappConfig The application configuration.
  * @param dataSource The JDBC datasource for DB access.
  */
-private fun Routing.apiRoutes(
-    webappConfig: WebappConfig,
+private fun Routing.userApiRoutes(
     dataSource: DataSource
 ) {
     // GET /api/users/{id} - get user by ID
@@ -420,16 +499,20 @@ private fun Routing.apiRoutes(
     // POST /api/users - create a new user
     post("/api/users", webResponse {
         either {
-            // Deserialize the incoming JSON request body
+            // Deserialize the incoming JSON request body to CreateUserRequest DTO
             val request = GsonProvider.gson.fromJson(
                 call.receiveText(),
                 CreateUserRequest::class.java
             )
 
-            // Validate the deserialized object
+            // Validate the deserialized request (email, password, tosAccepted)
+            // .bind() extracts the valid request or short-circuits with validation error
             val validRequest = validateCreateUserRequest(request).bind()
 
-            // Create user in database, converting Result failure to raised error
+            // Create user in database and handle potential errors
+            // Result<Long> is converted to Either via getOrElse + raise pattern:
+            // - Success: returns the generated user ID
+            // - Failure: converts exception to ValidationError and raises it (short-circuits)
             sessionOf(dataSource, returnGeneratedKey = true)
                 .use { dbSession ->
                     createUser(
@@ -442,7 +525,9 @@ private fun Routing.apiRoutes(
                 }
                 .getOrElse { exception -> raise(handleDatabaseException(exception)) }
         }.fold(
+            // Error case: validation or database error - return error response with appropriate status code
             { err -> JsonWebResponse(mapOf("error" to err.error), statusCode = err.statusCode) },
+            // Success case: user created - return user ID with 201 Created status
             { userId -> JsonWebResponse(mapOf("userId" to userId), statusCode = 201) }
         )
     })
@@ -450,7 +535,14 @@ private fun Routing.apiRoutes(
 
 /**
  * Converts a database exception to a ValidationError with an appropriate error message and status code.
- * Handles common database constraint violations like unique constraint violations.
+ *
+ * This function provides user-friendly error messages and correct HTTP status codes for common
+ * database failures, making API responses more informative and following REST conventions.
+ *
+ * Error mappings:
+ * - Unique/duplicate constraint violations → 409 Conflict (e.g., email already exists)
+ * - Other constraint violations → 400 Bad Request (e.g., NULL constraint, length violation)
+ * - General errors → 500 Internal Server Error
  *
  * @param exception The database exception to handle.
  * @return ValidationError with a user-friendly message and HTTP status code.
@@ -459,13 +551,16 @@ private fun handleDatabaseException(exception: Throwable): ValidationError {
     log.error("Database operation failed", exception)
 
     return when {
-        exception.message?.contains("unique", ignoreCase = true) == true
-                || exception.message?.contains("duplicate", ignoreCase = true) == true ->
+        // Unique constraint violation (e.g., duplicate email)
+        exception.message?.contains("unique", ignoreCase = true) == true ||
+                exception.message?.contains("duplicate", ignoreCase = true) == true ->
             ValidationError("User with this email already exists", 409)
 
+        // Other constraint violations (NOT NULL, CHECK, length, etc.)
         exception.message?.contains("constraint", ignoreCase = true) == true ->
             ValidationError("Invalid user data: ${exception.message}", 400)
 
+        // General database errors
         else -> ValidationError("Failed to create user: ${exception.message}", 500)
     }
 }

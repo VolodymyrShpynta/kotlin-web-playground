@@ -64,11 +64,11 @@ class SmokeIntegrationTest {
     private suspend fun get(pathAndQuery: String): HttpResponse =
         client.get("http://localhost:$port$pathAndQuery")
 
-    @DisplayName("GET / returns Hello, World!")
+    @DisplayName("GET /api returns Hello, World!")
     @Test
     fun shouldReturnHelloWorldOnRootGet() = runTest(timeout = 10.seconds) {
         // Given: root endpoint path
-        val path = "/"
+        val path = "/api"
 
         // When: executing GET request
         val res = get(path)
@@ -79,11 +79,11 @@ class SmokeIntegrationTest {
         assertEquals(ContentType.Text.Plain.withCharset(Charsets.UTF_8), res.contentType())
     }
 
-    @DisplayName("GET /param_test returns provided param value")
+    @DisplayName("GET /api/param_test returns provided param value")
     @Test
     fun shouldReturnProvidedParamValueFromParamTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: endpoint with query param foo=abc123
-        val path = "/param_test?foo=abc123"
+        val path = "/api/param_test?foo=abc123"
 
         // When: performing request
         val res = get(path)
@@ -93,11 +93,11 @@ class SmokeIntegrationTest {
         assertEquals("The param is: abc123", res.bodyAsText())
     }
 
-    @DisplayName("GET /param_test returns null when param missing")
+    @DisplayName("GET /api/param_test returns null when param missing")
     @Test
     fun shouldReturnNullWhenParamMissingOnParamTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: endpoint without foo query parameter
-        val path = "/param_test"
+        val path = "/api/param_test"
 
         // When: performing request
         val res = get(path)
@@ -107,11 +107,11 @@ class SmokeIntegrationTest {
         assertEquals("The param is: null", res.bodyAsText())
     }
 
-    @DisplayName("GET /json_test returns JSON payload")
+    @DisplayName("GET /api/json_test returns JSON payload")
     @Test
     fun shouldReturnJsonPayloadOnJsonTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: json_test endpoint
-        val path = "/json_test"
+        val path = "/api/json_test"
 
         // When: performing request
         val res = get(path)
@@ -123,11 +123,11 @@ class SmokeIntegrationTest {
         assertEquals("""{"foo":"bar"}""", res.bodyAsText())
     }
 
-    @DisplayName("GET /json_test_with_header returns JSON payload and custom header")
+    @DisplayName("GET /api/json_test_with_header returns JSON payload and custom header")
     @Test
     fun shouldReturnJsonPayloadAndCustomHeaderOnJsonTestWithHeaderEndpoint() = runTest(timeout = 10.seconds) {
         // Given: json_test_with_header endpoint
-        val path = "/json_test_with_header"
+        val path = "/api/json_test_with_header"
 
         // When: performing request
         val res = get(path)
@@ -140,11 +140,11 @@ class SmokeIntegrationTest {
         assertEquals("Just a test!", res.headers["x-test-header"])
     }
 
-    @DisplayName("GET /db_test returns JSON with single SELECT result")
+    @DisplayName("GET /api/db_test returns JSON with single SELECT result")
     @Test
     fun shouldReturnSingleSelectResultFromDbTestEndpoint() = runTest(timeout = 10.seconds) {
         // Given: db_test endpoint executing 'SELECT 1 as one'
-        val path = "/db_test"
+        val path = "/api/db_test"
 
         // When: performing request
         val res = get(path)
@@ -156,11 +156,11 @@ class SmokeIntegrationTest {
         assertEquals("""{"one":1}""", res.bodyAsText())
     }
 
-    @DisplayName("GET /db_get_user returns public user without passwordHash")
+    @DisplayName("GET /api/db_get_user returns public user without passwordHash")
     @Test
     fun shouldReturnPublicUserFromDbGetUserEndpoint() = runTest(timeout = 10.seconds) {
         // Given: endpoint '/db_get_user' with seeded default user
-        val path = "/db_get_user"
+        val path = "/api/db_get_user"
 
         // When: calling the endpoint
         val res = get(path)
