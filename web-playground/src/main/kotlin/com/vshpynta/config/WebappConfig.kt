@@ -11,6 +11,10 @@ package com.vshpynta.config
  * @property dbUser Database username (empty for H2 test usage).
  * @property dbPassword Database password (empty for H2 test usage).
  * @property useFileSystemAssets Flag to serve static assets from the file system (true in local, false in prod).
+ * @property useSecureCookie Enable Secure flag on cookies (requires HTTPS).
+ * @property cookieSameSite SameSite cookie attribute (lax, strict, or none).
+ * @property cookieEncryptionKey Key for encrypting session cookies.
+ * @property cookieSigningKey Key for signing session cookies.
  */
 data class WebappConfig(
     val httpPort: Int,
@@ -19,6 +23,7 @@ data class WebappConfig(
     val dbPassword: String,
     val useFileSystemAssets: Boolean,
     val useSecureCookie: Boolean,
+    val cookieSameSite: String,
     val cookieEncryptionKey: String,
     val cookieSigningKey: String
 )

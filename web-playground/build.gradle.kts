@@ -39,6 +39,8 @@ dependencies {
     implementation("io.ktor:ktor-server-auth") // Authentication support
     implementation("io.ktor:ktor-server-sessions") // Session management support
 
+    implementation("io.ktor:ktor-server-cors-jvm") // CORS support
+
     // Ktor testing and client modules (also version-managed by BOM)
     testImplementation("io.ktor:ktor-server-test-host-jvm") // In-memory test host for fast HTTP tests
 

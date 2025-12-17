@@ -38,6 +38,7 @@ import com.vshpynta.web.dto.CreateUserRequest
 import com.vshpynta.web.dto.PublicUser
 import com.vshpynta.web.dto.ValidationError
 import com.vshpynta.web.html.AppLayout
+import com.vshpynta.web.ktor.KtorJsonWebResponse
 import com.vshpynta.web.ktor.webResponse
 import com.vshpynta.web.ktor.webResponseDb
 import com.vshpynta.web.serialization.GsonProvider
@@ -49,8 +50,10 @@ import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
@@ -61,10 +64,11 @@ import io.ktor.server.html.Template
 import io.ktor.server.html.respondHtmlTemplate
 import io.ktor.server.http.content.singlePageApplication
 import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveText
-import io.ktor.server.response.respondRedirect
+import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Routing
 import io.ktor.server.routing.RoutingContext
@@ -75,6 +79,7 @@ import io.ktor.server.sessions.SessionTransportTransformerEncrypt
 import io.ktor.server.sessions.Sessions
 import io.ktor.server.sessions.clear
 import io.ktor.server.sessions.cookie
+import io.ktor.server.sessions.get
 import io.ktor.server.sessions.maxAge
 import io.ktor.server.sessions.sessions
 import io.ktor.server.sessions.set
@@ -202,6 +207,34 @@ fun Application.setUpKtorApplication(
         }
     }
 
+    // CORS: Configured for cross-domain architecture with explicit allowlist
+    // Only domains explicitly listed here can authenticate with the backend
+    // No wildcards - maximum security through allowlist approach
+    //
+    // Architecture:
+    // - Backend API can be hosted on api-service.com
+    // - Frontend(s) can be hosted on myapp.com, another-domain.org, etc.
+    // - Each allowed domain must be explicitly configured
+    // - Uses SameSite=None for cross-domain cookies (less secure than Lax, but necessary)
+    install(CORS) {
+        // HTTP methods GET, POST are allowed by default
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+
+        // Development: Allow localhost with different ports (cross-origin for dev)
+        allowHost("localhost:4207")
+        allowHost("127.0.0.1:9876")
+
+        // Production: Explicitly allowed domains (HTTPS enforced)
+        // Add ALL domains that should be able to authenticate
+        // Examples of different domains (not just subdomains):
+        allowHost("www.myapp.com", schemes = listOf("https"))
+        allowHost("another-domain.org", schemes = listOf("https"))
+
+        // Required for cookie-based authentication across origins
+        allowCredentials = true
+    }
+
     routing {
         singlePageApplicationRoutes(webappConfig)
         helloWorldApiRoutes(dataSource)
@@ -232,7 +265,7 @@ fun Application.setUpKtorCookieSecurity(
             cookie.httpOnly = true
             cookie.path = "/" // Cookie valid for entire site
             cookie.secure = appConfig.useSecureCookie // Use secure cookies in production
-            cookie.extensions["SameSite"] = "lax" // Mitigate CSRF (Cross-Site Request Forgery) for modern browsers
+            cookie.extensions["SameSite"] = appConfig.cookieSameSite // Configure CORS policy
         }
     }
 
@@ -241,17 +274,42 @@ fun Application.setUpKtorCookieSecurity(
         // Configure session-based authentication with the SESSION_AUTH_PROVIDER name
         // Routes wrapped with authenticate(SESSION_AUTH_PROVIDER) will require a valid session
         session<UserSession>(SESSION_AUTH_PROVIDER) {
-            // Validate session - here we simply check it exists, but you could add:
+            // Validate session and CSRF token for ALL authenticated requests
+            // CSRF token is required for all HTTP methods (GET, POST, PUT, DELETE, etc.)
+            // Returns the session if valid, or null if CSRF validation fails
+            // Additional checks can be added here:
             // - Database lookup to verify user still exists
             // - Check if user is active/not banned
             // - Verify session hasn't been revoked
             validate { session ->
-                session
+                session.takeIf { validCsrfToken(it) }
             }
-            // Challenge function called when authentication fails (no session or validation fails)
-            // Redirects unauthenticated users to the login page
+
+            // Challenge block called when authentication/validation fails
+            // Distinguishes between missing session (401) and invalid CSRF token (403)
+            // Note: call.principal<UserSession>() is always null here because validate() returned null,
+            // so we must access the session cookie directly via call.sessions.get<UserSession>()
             challenge {
-                call.respondRedirect("/api/login")
+                // Access session cookie directly (bypasses principal which is null)
+                val session = call.sessions.get<UserSession>()
+
+                if (session != null) {
+                    // Session cookie exists but CSRF token invalid/missing
+                    call.respond(
+                        KtorJsonWebResponse(
+                            body = mapOf("error" to "Invalid or missing CSRF token"),
+                            status = HttpStatusCode.Forbidden // 403
+                        )
+                    )
+                } else {
+                    // No session cookie at all - authentication required
+                    call.respond(
+                        KtorJsonWebResponse(
+                            body = mapOf("error" to "Authentication required", "requiresAuth" to true),
+                            status = HttpStatusCode.Unauthorized // 401
+                        )
+                    )
+                }
             }
         }
     }
@@ -276,8 +334,8 @@ fun Application.setUpKtorCookieSecurity(
             })
         })
 
-        // POST /api/login - Process login form submission
-        post("/api/login") {
+        // POST /api/login - Process login form submission for cross-origin AJAX
+        post("/api/login", webResponse {
             sessionOf(dataSource).use { dbSession ->
                 // Extract username (email) and password from form parameters
                 val params = call.receiveParameters()
@@ -291,26 +349,40 @@ fun Application.setUpKtorCookieSecurity(
                 )
 
                 if (userId == null) {
-                    // Authentication failed - invalid credentials
-                    // TODO: Consider adding error message to session and displaying on login page
-                    call.respondRedirect("/api/login")
+                    // Authentication failed - return 401 Unauthorized with error message
+                    // JavaScript will parse and display the error to user
+                    JsonWebResponse(
+                        body = mapOf("error" to "Invalid credentials"),
+                        statusCode = 401
+                    )
                 } else {
-                    // Authentication successful - create encrypted session cookie
-                    // The cookie<UserSession>() configuration already maps the UserSession type to USER_SESSION_COOKIE_NAME
-                    // Ktor automatically encrypts, signs, and sets the cookie based on the Sessions configuration
-                    call.sessions.set(UserSession(userId = userId))
+                    // Authentication successful - generate CSRF token and set encrypted session cookie
+                    // CSRF token protects against Cross-Site Request Forgery attacks
+                    // Since we use SameSite=None for cross-domain, CSRF tokens provide additional protection
+                    val csrfToken = java.util.UUID.randomUUID().toString()
 
-                    // Redirect to protected page
-                    call.respondRedirect("/api/secret")
+                    // Store CSRF token in session (encrypted in cookie)
+                    call.sessions.set(UserSession(userId = userId, csrfToken = csrfToken))
+
+                    // Return CSRF token to client (stored in JavaScript memory, not localStorage)
+                    // Client must include this token in X-CSRF-Token header for state-changing requests
+                    JsonWebResponse(
+                        body = mapOf(
+                            "success" to true,
+                            "message" to "Login successful",
+                            "csrfToken" to csrfToken
+                        )
+                    )
                 }
             }
-        }
+        })
 
         // Protected routes - require valid session (authenticate wrapper enforces this)
         // If session is missing or invalid, the challenge block redirects to /api/login
         authenticate(SESSION_AUTH_PROVIDER) {
-            // GET /api/secret - Protected page that displays user information
+            // GET /api/secret - Protected page that displays user information (CSRF protected)
             get("/api/secret", webResponseDb(dataSource) { dbSession ->
+
                 // Extract session from request - guaranteed non-null because authenticate() wrapper validates it
                 val userSession = call.principal<UserSession>()!!
 
@@ -333,12 +405,16 @@ fun Application.setUpKtorCookieSecurity(
                 )
             })
 
-            // GET /api/logout - Clear session and redirect to login page
-            get("/api/logout") {
+            // GET /api/logout - Clear session and return JSON confirmation
+            get("/api/logout", webResponse {
                 // Remove session cookie, effectively logging out the user
                 call.sessions.clear<UserSession>()
-                call.respondRedirect("/api/login")
-            }
+
+                // Frontend can handle navigation (e.g., redirect to login page)
+                JsonWebResponse(
+                    body = mapOf("success" to true, "message" to "Logged out successfully")
+                )
+            })
         }
     }
 }
@@ -468,6 +544,38 @@ private fun Routing.helloWorldApiRoutes(
             }
         })
     })
+}
+
+/**
+ * Validates CSRF token for all authenticated requests.
+ *
+ * Called from the session authentication validate block to protect against CSRF attacks
+ * when using SameSite=None cookies for cross-domain authentication.
+ *
+ * Note: This validates CSRF token for ALL HTTP methods (GET, POST, PUT, DELETE, etc.),
+ * not just state-changing requests. This provides additional security for all authenticated
+ * endpoints when using cross-domain cookies with SameSite=None.
+ *
+ * How it works:
+ * - Extracts X-CSRF-Token header from the request
+ * - Compares it with the CSRF token stored in the user's session
+ * - Returns true only if both exist and match
+ *
+ * Used in validate block with takeIf:
+ * ```kotlin
+ * validate { session ->
+ *     session.takeIf { validCsrfToken(it) }
+ * }
+ * ```
+ *
+ * @param session The user session containing the expected CSRF token
+ * @return true if CSRF token is valid (header matches session), false otherwise
+ */
+private fun ApplicationCall.validCsrfToken(session: UserSession): Boolean {
+    val providedToken = this.request.headers["X-CSRF-Token"]
+
+    // Both token and session must exist, and tokens must match
+    return providedToken != null && session.csrfToken == providedToken
 }
 
 /**
@@ -674,6 +782,7 @@ fun createAppConfig(env: String) =
                 dbPassword = it.getString("db.password"),
                 useFileSystemAssets = it.getBoolean("useFileSystemAssets"),
                 useSecureCookie = it.getBoolean("useSecureCookie"),
+                cookieSameSite = it.getString("cookieSameSite"),
                 cookieEncryptionKey = it.getString("cookieEncryptionKey"),
                 cookieSigningKey = it.getString("cookieSigningKey")
             )
