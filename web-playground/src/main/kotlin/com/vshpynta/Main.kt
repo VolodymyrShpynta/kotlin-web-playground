@@ -21,6 +21,8 @@
 package com.vshpynta
 
 import arrow.core.raise.either
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
@@ -57,6 +59,9 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.authentication
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.jwt.jwt
 import io.ktor.server.auth.principal
 import io.ktor.server.auth.session
 import io.ktor.server.engine.embeddedServer
@@ -109,6 +114,9 @@ import kotliquery.sessionOf
 import org.flywaydb.core.Flyway
 import org.flywaydb.core.api.output.MigrateResult
 import org.slf4j.LoggerFactory
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.util.Date
 import javax.sql.DataSource
 import kotlin.time.Duration
 
@@ -119,10 +127,17 @@ import kotlin.time.Duration
 private const val USER_SESSION_COOKIE_NAME = "user-session"
 
 /**
- * Authentication provider name used to protect routes requiring authentication.
+ * Authentication provider name used to protect routes requiring cookie-based session authentication.
  * Referenced in both the Authentication plugin configuration and the authenticate() route wrapper.
  */
 private const val SESSION_AUTH_PROVIDER = "auth-session"
+
+/**
+ * Authentication provider name used to protect routes requiring JWT token authentication.
+ * Routes wrapped with authenticate(JWT_AUTH_PROVIDER) will require a valid JWT token
+ * in the Authorization header (Bearer scheme).
+ */
+private const val JWT_AUTH_PROVIDER = "jwt-auth"
 
 private val log = LoggerFactory.getLogger("com.vshpynta.Main")
 
@@ -153,6 +168,7 @@ fun main() {
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort) {
         setUpKtorCookieSecurity(appConfig, dataSource)
+        setUpKtorJwtSecurity(appConfig, dataSource)
         setUpKtorApplication(appConfig, dataSource)
     }.start(wait = true)
 }
@@ -245,14 +261,30 @@ fun Application.setUpKtorApplication(
 /**
  * Configures Ktor cookie-based session security with encryption and signing.
  *
+ * This implementation is stateless - session data (userId, csrfToken) is encrypted and stored
+ * in a cookie on the client side, NOT on the server. On each request, the server decrypts
+ * the cookie, validates it, and extracts the session data. No server-side session storage.
+ *
+ * **Key Features:**
+ * - Session data encrypted with AES (cookieEncryptionKey) and signed with HMAC (cookieSigningKey)
+ * - Cookies automatically sent by browser (requires CSRF protection)
+ * - Suitable for traditional web applications with browser clients
+ *
+ * **Security:**
+ * - CSRF token validation required for all authenticated requests (including GET)
+ * - HttpOnly cookies prevent XSS attacks
+ * - Secure flag ensures HTTPS-only transmission in production
+ * - SameSite policy configurable for cross-domain scenarios
+ *
  * @param appConfig The application configuration.
- * @param dataSource The JDBC datasource (not used here but could be for session storage).
+ * @param dataSource The JDBC datasource for user authentication and lookup.
  */
 fun Application.setUpKtorCookieSecurity(
     appConfig: WebappConfig,
     dataSource: DataSource
 ) {
     // Configure cookie-based sessions with encryption and signing
+    // Session data is stored in an encrypted cookie on the client, not on the server
     install(Sessions) {
         cookie<UserSession>(USER_SESSION_COOKIE_NAME) {
             transform(
@@ -414,6 +446,149 @@ fun Application.setUpKtorCookieSecurity(
                 JsonWebResponse(
                     body = mapOf("success" to true, "message" to "Logged out successfully")
                 )
+            })
+        }
+    }
+}
+
+/**
+ * Configures Ktor JWT (JSON Web Token) authentication.
+ *
+ * JWT authentication is stateless - the server doesn't store session data. All user
+ * information and authentication state is encoded in the token itself, which the
+ * client includes in the Authorization header of each request.
+ *
+ * **Comparison with Cookie-based Auth (both stateless in this implementation):**
+ * - JWT: Token in Authorization header, signed with HMAC256, no CSRF protection needed
+ * - Cookies: Encrypted cookie sent automatically by browser, requires CSRF protection
+ * - Both: Server doesn't store session data, validates token/cookie on each request
+ *
+ * **Key Differences:**
+ * - JWT tokens must be manually included in each request header
+ * - Cookies are automatically sent by the browser (requires CSRF protection)
+ * - JWT is ideal for APIs and mobile apps; Cookies work well for traditional web apps
+ *
+ * **Security Notes:**
+ * - Tokens are signed with HMAC256 to prevent tampering
+ * - Tokens expire after 1 day (configurable in login endpoint)
+ * - No CSRF protection needed (tokens not automatically sent by browser)
+ * - Audience and issuer claims provide additional validation layers
+ *
+ * @param appConfig The application configuration.
+ * @param dataSource The JDBC datasource for user authentication and lookup.
+ */
+fun Application.setUpKtorJwtSecurity(
+    appConfig: WebappConfig,
+    dataSource: DataSource
+) {
+    // JWT audience and issuer are used for token verification only, not during authentication.
+    // They help validate JWTs from multiple sources and enable different authentication scopes.
+    // The authentication process itself doesn't use these properties - they only serve as
+    // verification criteria when validating incoming JWT tokens.
+    val jwtAudience = "myApp"
+    val jwtIssuer = "http://0.0.0.0:4207"
+
+    authentication {
+        // JWT authentication uses the built-in JWTPrincipal class instead of a custom principal.
+        // JWTPrincipal automatically parses Authorization headers (Bearer tokens) and decodes
+        // the JWT payload, making it simpler than cookie-based auth which requires custom session classes.
+        jwt(JWT_AUTH_PROVIDER) {
+            realm = "myApp"
+
+            // Configure JWT verifier to validate token signature and claims
+            // Uses same signing key as cookies for simplicity (could be different in production)
+            verifier(
+                JWT
+                    .require(Algorithm.HMAC256(appConfig.cookieSigningKey))
+                    .withAudience(jwtAudience)
+                    .withIssuer(jwtIssuer)
+                    .build()
+            )
+
+            // Validate JWT claims and return JWTPrincipal if valid
+            // Returns null if audience doesn't match, which triggers authentication challenge
+            validate { credential ->
+                credential.payload.takeIf { it.audience.contains(jwtAudience) }
+                    ?.let { JWTPrincipal(it) }
+            }
+        }
+    }
+
+    routing {
+        // POST /api/jwt/login - Authenticate user and issue JWT token
+        // Request body: JSON with "username" (email) and "password" fields
+        // Response: JSON with "token" field containing the JWT, or error message
+        //
+        // Example request:
+        // POST /api/jwt/login
+        // Content-Type: application/json
+        // {"username": "user@example.com", "password": "secret"}
+        //
+        // Example response (success):
+        // {"token": "eyJ0eXAiOiJKV1QiLCJhbGc..."}
+        //
+        // Example response (failure):
+        // {"error": "Invalid username and/or password"}
+        post("/api/jwt/login", webResponseDb(dataSource) { dbSession ->
+            // Parse JSON request body to extract username and password
+            val input = GsonProvider.gson.fromJson(call.receiveText(), Map::class.java)
+
+            // Authenticate user credentials against database
+            val userId = authenticateUser(
+                dbSession,
+                input["username"] as String,
+                input["password"] as String
+            )
+
+            // Generate JWT token if authentication successful, otherwise return error
+            userId?.let { id ->
+                // Create signed JWT token with user claims
+                // Token contains: audience, issuer, userId claim, and expiration (1 day)
+                val token = JWT.create()
+                    .withAudience(jwtAudience)
+                    .withIssuer(jwtIssuer)
+                    .withClaim("userId", id)
+                    .withExpiresAt(
+                        Date.from(
+                            LocalDateTime.now()
+                                .plusDays(1)
+                                .toInstant(ZoneOffset.UTC)
+                        )
+                    )
+                    .sign(Algorithm.HMAC256(appConfig.cookieSigningKey))
+
+                // Return token to client - client must store it and include in Authorization header
+                JsonWebResponse(mapOf("token" to token))
+            } ?: JsonWebResponse(
+                mapOf("error" to "Invalid username and/or password"),
+                statusCode = 403
+            )
+        })
+
+        // Protected JWT routes - require valid JWT token in Authorization header
+        // Client must include: Authorization: Bearer <token>
+        authenticate(JWT_AUTH_PROVIDER) {
+            // GET /api/jwt/secret - Protected endpoint that returns user information
+            // Demonstrates accessing JWT claims (userId) and fetching user from database
+            //
+            // Example request:
+            // GET /api/jwt/secret
+            // Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc...
+            //
+            // Example response:
+            // {"hello": "user@example.com"}
+            get("/api/jwt/secret", webResponseDb(dataSource) { dbSession ->
+                // Extract JWT principal - guaranteed non-null because authenticate() wrapper validates it
+                val jwtPrincipal = call.principal<JWTPrincipal>()!!
+
+                // Extract userId from JWT claims (set during login)
+                val userId = jwtPrincipal.getClaim("userId", Long::class)!!
+
+                // Fetch user details from database using JWT's userId claim
+                val user = findUserById(dbSession, userId)!!
+
+                // Return user information as JSON
+                JsonWebResponse(mapOf("hello" to user.email))
             })
         }
     }

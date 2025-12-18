@@ -107,5 +107,20 @@ Cookie: user-session=e6d34411b03deb9ba4734b8d46ae6551%2F87abcaecb352c77bc92c5618
 # Returns: {"success": true, "message": "Logged out successfully"}
 # Frontend should handle redirect to login page if needed
 GET http://127.0.0.1:4207/api/logout
+###
 
+### JWT Login - Obtain JWT token
+POST http://127.0.0.1:4207/api/jwt/login
+Content-Type: application/json
+
+{
+  "username": "vshpynta@crud.business",
+  "password": "1234"
+}
+###
+
+### JWT Secret endpoint - Access protected resource with JWT
+# Include the JWT token obtained from /api/jwt/login in the Authorization header
+GET http://127.0.0.1:4207/api/jwt/secret
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJteUFwcCIsImlzcyI6Imh0dHA6Ly8wLjAuMC4wOjQyMDciLCJ1c2VySWQiOjEsImV4cCI6MTc2NjE4NDg2MH0.ebAQYt20wWK4rTIFKvv5HS0AK2X6a4lPwgY8MkyYYXk
 ###
