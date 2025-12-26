@@ -5,6 +5,8 @@ plugins {
     kotlin("plugin.serialization")
     // Application plugin provides run, installDist, distZip tasks
     application
+    // Shadow plugin for creating fat/uber JARs with all dependencies included
+    id("com.github.johnrengelman.shadow")
 }
 
 // Project coordinates used for publishing or identification

@@ -5,6 +5,8 @@ pluginManagement {
         kotlin("jvm") version "2.2.20"
         // Kotlin Serialization plugin version (should match Kotlin version)
         kotlin("plugin.serialization") version "2.2.20"
+        // Shadow plugin for creating fat/uber JARs with all dependencies included
+        id("com.github.johnrengelman.shadow") version "8.1.1"
     }
 }
 
