@@ -1,40 +1,216 @@
 # Kotlin Web Playground
 
-A minimal Kotlin (JVM) playground project running a simple Ktor HTTP server (Netty engine) exposing a single `GET /`
-endpoint that returns `Hello, World!`.
+A comprehensive Kotlin (JVM) web application showcasing modern backend development with Ktor framework. This project
+demonstrates authentication, database operations, functional error handling, and Single Page Application (SPA) hosting.
+
+## Overview
+
+This playground application provides a production-ready foundation for building web applications with:
+
+- **Cookie-based and JWT authentication** with CSRF protection
+- **Database management** with migrations and connection pooling
+- **RESTful API endpoints** with functional error handling (Arrow)
+- **Single Page Application** hosting with client-side routing support
+- **Coroutine-based async operations** with HTTP client examples
+- **Comprehensive testing** with integration and unit tests
 
 ## Tech Stack
 
-- Kotlin: 2.2.20 (configured via `pluginManagement` in `settings.gradle.kts`)
-- Ktor: 3.3.1 (managed via the Ktor BOM) – modules: server-core, server-netty, server-test-host, client-cio
-- Gradle Kotlin DSL build (`build.gradle.kts`)
-- JVM Toolchain: 24 (switch to 21 LTS if desired)
+### Core Framework
 
-## Documentation & Code Comments
+- **Kotlin**: 2.2.20 (configured via `pluginManagement` in `settings.gradle.kts`)
+- **Ktor**: 3.3.2 (managed via BOM) - Web framework with Netty engine
+- **Gradle**: Kotlin DSL with JVM Toolchain 24
 
-Inline comments explain the purpose of plugins, dependencies, test setup, and routing. See:
+### Key Dependencies
 
-- `settings.gradle.kts` – plugin & Foojay resolver rationale
-- `build.gradle.kts` – BOM use, dependency grouping, version alignment
-- `Main.kt` – KDoc for entry point and module
-- `HelloWorldRouteTest.kt` – integration test explanation
+- **Arrow FX**: Functional error handling with `Either` and `Raise` DSL
+- **HikariCP**: JDBC connection pooling (v7.0.2)
+- **Flyway**: Database migration management (v11.16.0)
+- **H2 Database**: In-memory and file-based database (v2.4.240)
+- **Kotliquery**: Type-safe SQL queries (v1.9.1)
+- **BCrypt**: Password hashing (v0.10.2)
+- **Typesafe Config**: HOCON configuration management (v1.4.3)
+- **Gson**: JSON serialization/deserialization (v2.13.2)
+- **Logback**: Logging implementation (v1.5.20)
+- **JWT**: JWT authentication (via Ktor)
 
-## Source Entry Point
+### Ktor Features Used
 
-`src/main/kotlin/com/vshpynta/Main.kt` defines:
+- Server Core & Netty Engine
+- Authentication (Session & JWT)
+- Sessions with encrypted cookies
+- Status Pages (error handling)
+- CORS support
+- HTML DSL
+- Single Page Application support
+- HTTP Client (CIO engine)
 
-- Netty server on port **4207**
-- `Application.module()` (testable configuration)
-- Private route builder for `GET /`
+## Architecture
+
+### Project Structure
+
+```
+web-playground/
+├── build.gradle.kts                    # Build configuration with Shadow plugin
+├── settings.gradle.kts                 # Plugin management and toolchain
+├── src/
+│   ├── main/
+│   │   ├── kotlin/com/vshpynta/
+│   │   │   ├── Main.kt                 # Application entry point
+│   │   │   ├── config/                 # Configuration classes
+│   │   │   ├── db/                     # Database utilities and mappings
+│   │   │   ├── model/                  # Domain models (User, etc.)
+│   │   │   ├── security/               # Authentication (UserSession)
+│   │   │   ├── service/                # Business logic
+│   │   │   └── web/                    # Web layer (DTOs, responses, validation)
+│   │   └── resources/
+│   │       ├── app.conf                # Base configuration
+│   │       ├── app-local.conf          # Local development config
+│   │       ├── app-prod.conf           # Production config
+│   │       ├── app-test.conf           # Test config
+│   │       ├── logback.xml             # Logging configuration
+│   │       ├── db/migration/           # Flyway SQL migrations
+│   │       └── public/                 # Static files for SPA
+│   │           ├── index.html
+│   │           ├── css/app.css
+│   │           └── js/app.js
+│   └── test/
+│       ├── kotlin/com/vshpynta/
+│       │   ├── ApplicationModuleTest.kt    # Unit tests
+│       │   ├── SmokeIntegrationTest.kt     # Integration tests
+│       │   └── db/DatabaseTest.kt          # Database tests
+│       └── resources/
+│           └── app-test.conf               # Test environment config
+└── AUTHENTICATION-GUIDE.md             # Comprehensive auth documentation
+```
+
+### API Endpoints
+
+All API endpoints use the `/api` prefix to avoid conflicts with SPA client-side routing.
+
+#### Demo & Hello World Endpoints
+
+| Endpoint                              | Method | Description                      | Auth Required |
+|---------------------------------------|--------|----------------------------------|---------------|
+| `/api`                                | GET    | Returns "Hello, World!"          | No            |
+| `/api/param_test`                     | GET    | Echoes query parameter `foo`     | No            |
+| `/api/json_test`                      | GET    | Returns simple JSON object       | No            |
+| `/api/json_test`                      | POST   | Echoes back posted JSON          | No            |
+| `/api/json_test_with_header`          | GET    | Returns JSON with custom header  | No            |
+| `/api/db_test`                        | GET    | Returns database query result    | No            |
+| `/api/db_get_user`                    | GET    | Returns first user as JSON       | No            |
+| `/api/coroutine_demo`                 | GET    | Demonstrates async HTTP/DB calls | No            |
+| `/api/html_demo`                      | GET    | HTML templating example          | No            |
+| `/api/html_webresponse_demo`          | GET    | Custom HTML response with layout | No            |
+| `/api/html_webresponse_nolayout_demo` | GET    | HTML response without layout     | No            |
+
+#### User Management Endpoints
+
+| Endpoint          | Method | Description     | Auth Required |
+|-------------------|--------|-----------------|---------------|
+| `/api/users/{id}` | GET    | Get user by ID  | No            |
+| `/api/users`      | POST   | Create new user | No            |
+
+#### Cookie-Based Authentication Endpoints
+
+| Endpoint      | Method | Description               | Auth Required |
+|---------------|--------|---------------------------|---------------|
+| `/api/login`  | GET    | Display login form        | No            |
+| `/api/login`  | POST   | Process login (form data) | No            |
+| `/api/logout` | GET    | Logout and clear session  | No            |
+| `/api/secret` | GET    | Protected endpoint (HTML) | Yes + CSRF    |
+
+#### JWT Authentication Endpoints
+
+| Endpoint          | Method | Description                        | Auth Required      |
+|-------------------|--------|------------------------------------|--------------------|
+| `/api/jwt/login`  | POST   | Login with JSON, returns JWT token | No                 |
+| `/api/jwt/secret` | GET    | Protected endpoint (returns JSON)  | Yes (Bearer token) |
+
+#### SPA Routes
+
+| Path                 | Description                                        |
+|----------------------|----------------------------------------------------|
+| `/`                  | Serves `index.html` (SPA entry point)              |
+| Any non-`/api` route | Falls back to `index.html` for client-side routing |
+
+### Third-Party Demo Service
+
+A demo service runs on port **9876** to showcase coroutine-based HTTP calls:
+
+- `GET /random_number` - Returns random number after random delay
+- `GET /ping` - Returns "pong"
+- `POST /reverse` - Reverses the posted body text
+
+## Configuration
+
+### Environment-Based Configuration
+
+The application uses HOCON (Typesafe Config) for configuration management. Environment is selected via the
+`WEB_PLAYGROUND_ENV` environment variable (defaults to `local`).
+
+**Available environments:**
+
+- `local` - Development (uses `app-local.conf`)
+- `prod` - Production (uses `app-prod.conf`)
+- `test` - Testing (uses `app-test.conf`)
+
+**Configuration hierarchy:**
+
+1. `app.conf` - Base configuration
+2. `app-{env}.conf` - Environment-specific overrides
+
+### Configuration Properties
+
+| Property              | Description                              | Default      |
+|-----------------------|------------------------------------------|--------------|
+| `httpPort`            | HTTP server port                         | `4207`       |
+| `db.url`              | JDBC connection URL                      | H2 in-memory |
+| `db.user`             | Database username                        | `null`       |
+| `db.password`         | Database password                        | `null`       |
+| `useFileSystemAssets` | Serve static files from filesystem (dev) | `false`      |
+| `useSecureCookie`     | Enable secure flag on session cookies    | `true`       |
+| `cookieSameSite`      | SameSite cookie policy                   | `"Lax"`      |
+| `cookieEncryptionKey` | Cookie encryption key (hex)              | Required     |
+| `cookieSigningKey`    | Cookie signing key (hex)                 | Required     |
+
+### Example: app-local.conf
+
+```hocon
+db.user = ""
+db.password = ""
+db.url = "jdbc:h2:./build/local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+
+useFileSystemAssets = true  # Hot-reload static files during development
+
+useSecureCookie = false  # Allow cookies over HTTP for local development
+cookieEncryptionKey = "1d13f63b868ad26c46151245e1b5175c"
+cookieSigningKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f"
+```
 
 ## Requirements
 
-- JDK 24 (or JDK 21 LTS)
+- **JDK 24** (or JDK 21 LTS - adjust `jvmToolchain` in `build.gradle.kts`)
 - Internet access for dependency resolution
+- **JAVA_HOME** environment variable set correctly
+- **%JAVA_HOME%\bin** added to system PATH
 
-## Run the Application
+### Setting up Java Environment (Windows)
 
-Windows (cmd.exe):
+1. Set `JAVA_HOME` as System environment variable pointing to your JDK installation
+2. Add `%JAVA_HOME%\bin` to your PATH
+3. Verify:
+   ```cmd
+   echo %JAVA_HOME%
+   java --version
+   ```
+
+## Running the Application
+
+### Development Mode (from IDE or Gradle)
+
+Windows (PowerShell or CMD):
 
 ```bat
 gradlew.bat run
@@ -46,143 +222,59 @@ Unix-like:
 ./gradlew run
 ```
 
-Server URL: `http://localhost:4207/`
+The server will start on **http://localhost:4207/**
 
-Test the endpoint:
+### With Custom Environment
 
-```bash
-curl http://localhost:4207/
+Windows (PowerShell):
+
+```powershell
+$env:WEB_PLAYGROUND_ENV="prod"; gradlew.bat run
 ```
 
-Expected:
+Windows (CMD):
 
-```
-Hello, World!
-```
-
-## Common Gradle Tasks
-
-```bat
-gradlew.bat build       # Compile + test
-gradlew.bat test        # Run tests
-gradlew.bat run         # Start server
-gradlew.bat shadowJar   # Build fat JAR with all dependencies
-gradlew.bat installDist # Create distribution with scripts
-gradlew.bat distZip     # Create distribution ZIP
-gradlew.bat clean       # Clean build artifacts
-gradlew.bat tasks --all # List all available tasks
-```
-
-## Running the Installed Distribution
-
-```bat
-build\install\web-playground\bin\web-playground.bat
+```cmd
+set WEB_PLAYGROUND_ENV=prod && gradlew.bat run
 ```
 
 Unix-like:
 
 ```bash
-./build/install/web-playground/bin/web-playground
+WEB_PLAYGROUND_ENV=prod ./gradlew run
 ```
 
-## Project Structure
-
-```
-web-playground/
-  build.gradle.kts
-  settings.gradle.kts
-  src/
-    main/kotlin/com/vshpynta/Main.kt
-    test/kotlin/com/vshpynta/HelloWorldRouteTest.kt
-```
-
-## Port Configuration
-
-Hard-coded in `Main.kt`:
-
-```kotlin
-embeddedServer(Netty, port = 4207, module = Application::module)
-```
-
-Environment override:
-
-```kotlin
-val port = System.getenv("PORT")?.toIntOrNull() ?: 4207
-```
-
-Run examples:
+### Testing Endpoints
 
 ```bash
-PORT=8080 ./gradlew run
-set PORT=8080 && gradlew.bat run
-$env:PORT=8080; gradlew.bat run
+# Hello World
+curl http://localhost:4207/api
+
+# Query parameter test
+curl "http://localhost:4207/api/param_test?foo=test123"
+
+# JSON endpoint
+curl http://localhost:4207/api/json_test
+
+# Get user by ID
+curl http://localhost:4207/api/users/1
+
+# Database test
+curl http://localhost:4207/api/db_test
+
+# Coroutine demo (async operations)
+curl http://localhost:4207/api/coroutine_demo
 ```
 
-## Dependency & Version Management
-
-Using the Ktor BOM keeps all referenced Ktor artifacts at the same version:
-
-```kotlin
-dependencies {
-    implementation(platform("io.ktor:ktor-bom:3.3.1"))
-    implementation("io.ktor:ktor-server-core-jvm")
-    implementation("io.ktor:ktor-server-netty-jvm")
-    testImplementation("io.ktor:ktor-server-test-host-jvm")
-    testImplementation("io.ktor:ktor-client-cio-jvm")
-    implementation(kotlin("stdlib"))
-}
-```
-
-To upgrade Ktor, change only the BOM line (e.g. `ktor-bom:3.4.0`) and re-sync.
-
-### Beta / EAP Versions
-
-Uncomment the EAP repository if using previews:
-
-```kotlin
-// repositories {
-//   maven("https://maven.pkg.jetbrains.space/public/p/ktor/eap")
-// }
-```
-
-Then update BOM and ensure all modules still resolve. If a module 404s, revert to stable.
-
-## Tests
-
-Integration test (`HelloWorldRouteTest.kt`) uses Ktor `testApplication {}` and the test host module. Run:
-
-```bat
-gradlew.bat test
-```
-
-Targeted run:
-
-```bat
-gradlew.bat test --tests com.vshpynta.HelloWorldRouteTest
-```
-
-Coroutines test utilities are available via `kotlinx-coroutines-test` for structured concurrency & virtual time when
-needed.
-
-## Logging (Optional)
-
-SLF4J warning appears (no provider). Add a simple backend:
-
-```kotlin
-dependencies {
-    runtimeOnly("org.slf4j:slf4j-simple:2.0.16") // or logback-classic
-}
-```
-
-Then use `application.log.info("Started")` or Kotlin Logging.
-
-## Packaging
+## Building & Packaging
 
 ### Fat/Uber JAR with Shadow Plugin
 
-The project uses the Shadow plugin to create self-contained JAR files with all dependencies included.
+The project uses the **Shadow Plugin** to create self-contained executable JAR files with all dependencies included.
 
-**Build the shadow JAR:**
+#### Build the Shadow JAR
+
+Windows:
 
 ```bat
 gradlew.bat shadowJar
@@ -194,7 +286,14 @@ Unix-like:
 ./gradlew shadowJar
 ```
 
-**Run the shadow JAR:**
+Output: `build/libs/web-playground-1.0-SNAPSHOT-all.jar`
+
+#### Run the Shadow JAR
+
+**Important:** When running from a shadow JAR, ensure `useFileSystemAssets = false` in your configuration to serve
+static files from JAR resources instead of the filesystem.
+
+Windows:
 
 ```bat
 java -jar build\libs\web-playground-1.0-SNAPSHOT-all.jar
@@ -206,65 +305,274 @@ Unix-like:
 java -jar build/libs/web-playground-1.0-SNAPSHOT-all.jar
 ```
 
-**Important:** When running from shadow JAR, ensure your configuration has `useFileSystemAssets = false` to serve static
-files from JAR resources instead of the file system.
-
-**Verify contents:**
+With production configuration:
 
 ```bash
-jar tf build/libs/web-playground-1.0-SNAPSHOT-all.jar | grep static
+WEB_PLAYGROUND_ENV=prod java -jar build/libs/web-playground-1.0-SNAPSHOT-all.jar
+```
+
+#### Verify JAR Contents
+
+```bash
+jar tf build/libs/web-playground-1.0-SNAPSHOT-all.jar | grep public
 ```
 
 ### Standard Distribution
 
-Dependencies aren't bundled; use installDist for a directory with shell scripts:
+Create a distribution with shell scripts (dependencies not bundled into single JAR):
 
 ```bash
 ./gradlew installDist
 ```
 
-Then run:
+Run:
 
 ```bash
+# Windows
+build\install\web-playground\bin\web-playground.bat
+
+# Unix-like
 ./build/install/web-playground/bin/web-playground
 ```
 
-## JDK Toolchain
+Create ZIP distribution:
 
-Switch to LTS 21 for broader compatibility:
-
-```kotlin
-kotlin { jvmToolchain(21) }
+```bash
+./gradlew distZip
 ```
 
-Ensure IDE Gradle JVM matches.
+## Common Gradle Tasks
+
+| Command               | Description                         |
+|-----------------------|-------------------------------------|
+| `gradlew build`       | Compile + run tests                 |
+| `gradlew test`        | Run all tests                       |
+| `gradlew run`         | Start server in development mode    |
+| `gradlew shadowJar`   | Build fat JAR with all dependencies |
+| `gradlew installDist` | Create distribution with scripts    |
+| `gradlew distZip`     | Create distribution ZIP             |
+| `gradlew clean`       | Clean build artifacts               |
+| `gradlew tasks --all` | List all available tasks            |
+
+## Testing
+
+### Test Structure
+
+The project includes comprehensive tests:
+
+1. **ApplicationModuleTest.kt** - Unit tests using Ktor's `testApplication` harness (no real network)
+2. **SmokeIntegrationTest.kt** - Integration tests with real embedded Netty server
+3. **DatabaseTest.kt** - Database layer tests
+
+### Running Tests
+
+Run all tests:
+
+```bat
+gradlew.bat test
+```
+
+Run specific test class:
+
+```bat
+gradlew.bat test --tests com.vshpynta.SmokeIntegrationTest
+```
+
+Run specific test method:
+
+```bat
+gradlew.bat test --tests com.vshpynta.ApplicationModuleTest.shouldReturnHelloWorldOnRootGet
+```
+
+### Test Environment
+
+Tests use the `test` environment configuration (`app-test.conf`) with an in-memory H2 database. Database schema is
+created and populated automatically via Flyway migrations.
+
+## Database
+
+### Database Schema
+
+The application uses Flyway for database migrations located in `src/main/resources/db/migration/`:
+
+- **V1__initial.sql** - Creates `user_table` with id, email, password_hash, timestamps
+- **V2__add_name_to_user.sql** - Adds name column
+- **V3__add_tos_accepted_backward_compatible.sql** - Adds Terms of Service acceptance flag
+- **V4__make_tos_accepted_not_nullable.sql** - Makes TOS field mandatory
+- **R__populate_default_user.sql** - Repeatable migration that populates default test user
+
+### Default User
+
+For testing purposes, a default user is created:
+
+- Email: `user@example.com`
+- Password: `password`
+
+### Database Configuration
+
+**Local Development** (H2 file-based):
+
+```hocon
+db.url = "jdbc:h2:./build/local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+```
+
+**Test** (H2 in-memory):
+
+```hocon
+db.url = "jdbc:h2:mem:test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+```
+
+## Authentication
+
+The application demonstrates two authentication methods:
+
+### 1. Cookie-Based Session Authentication
+
+- Uses encrypted session cookies
+- CSRF protection via custom token validation
+- Session stored in memory (UserSession data class)
+- Suitable for traditional web applications
+- See `AUTHENTICATION-GUIDE.md` for detailed documentation
+
+### 2. JWT Token Authentication
+
+- Stateless authentication with JWT tokens
+- Bearer token in Authorization header
+- 1-day token expiration
+- Suitable for APIs and mobile clients
+- See `AUTHENTICATION-GUIDE.md` for detailed documentation
+
+## Error Handling
+
+The application uses **Arrow's functional error handling** with `Either` and `Raise` DSL:
+
+- **Validation errors** - Returns structured error responses (400/404)
+- **Database errors** - Mapped to appropriate HTTP status codes
+- **Unhandled exceptions** - Caught by StatusPages plugin (500)
+
+Example:
+
+```kotlin
+either {
+    val userId = call.parameters["id"]?.toLongOrNull()
+        ?: raise(ValidationError("Invalid user ID", 400))
+    findUserById(dbSession, userId)
+        ?: raise(ValidationError("User not found", 404))
+}
+```
+
+## Logging
+
+The application uses **Logback** for logging (configured in `logback.xml`).
+
+Available loggers:
+
+- `com.vshpynta.Main` - Application lifecycle and configuration
+- `com.vshpynta.db` - Database operations
+- `io.ktor` - Ktor framework logs
+
+Log levels can be adjusted in `logback.xml`.
+
+## Single Page Application (SPA) Support
+
+The application serves static files and supports client-side routing:
+
+- **Development mode** (`useFileSystemAssets = true`): Serves files from `src/main/resources/public` for hot-reload
+- **Production mode** (`useFileSystemAssets = false`): Serves files from JAR resources
+
+**URL routing convention:**
+
+- Routes starting with `/api` → Backend API endpoints
+- All other routes → Served by SPA (falls back to `index.html`)
+
+This allows the SPA to handle routes like `/home`, `/about`, `/profile` while keeping backend APIs under `/api/*`.
+
+## Dependency & Version Management
+
+### Ktor BOM (Bill of Materials)
+
+All Ktor modules are managed via the Ktor BOM to ensure version consistency:
+
+```kotlin
+dependencies {
+    implementation(platform("io.ktor:ktor-bom:3.3.2"))
+    implementation("io.ktor:ktor-server-core-jvm")
+    implementation("io.ktor:ktor-server-netty-jvm")
+    // ... other Ktor modules without explicit versions
+}
+```
+
+To upgrade Ktor, change only the BOM version and re-sync.
+
+### Plugin Versions
+
+Plugin versions are centralized in `settings.gradle.kts`:
+
+- Kotlin: 2.2.20
+- Shadow: 8.1.1
+- Foojay Toolchain Resolver: 0.8.0
+
+## JDK Toolchain
+
+The project uses Gradle's JVM toolchain feature set to JDK 24. To switch to LTS version:
+
+```kotlin
+// In build.gradle.kts
+kotlin {
+    jvmToolchain(21)  // Switch to Java 21 LTS
+}
+```
+
+Ensure your IDE's Gradle JVM setting matches the toolchain version.
 
 ## Future Enhancements
 
-- Logging backend (logback or slf4j-simple)
-- Health check route (`GET /health`)
-- Detekt / ktlint
-- Version catalog (`libs.versions.toml`)
+- [ ] Health check endpoint (`GET /api/health`)
+- [ ] Code quality tools (Detekt / ktlint)
+- [ ] Gradle version catalog (`libs.versions.toml`)
 - Config file (HOCON) and typed settings
-- Docker image
-
-## Contribution Guidelines
-
-1. Keep BOM aligned; avoid mixing versions.
-2. Add KDoc for public APIs.
-3. Run tests before commits.
-4. Update README when adding endpoints or ports.
-5. Prefer explicit configuration in `module()`.
+- [ ] Docker image with multi-stage build
+- [ ] Database connection from connection string secret
+- [ ] Production-grade session storage (Redis, database)
+- [ ] Rate limiting middleware
+- [ ] OpenAPI/Swagger documentation
+- [ ] Metrics and monitoring (Micrometer)
 
 ## Troubleshooting
 
-| Issue                   | Action                                                         |
-|-------------------------|----------------------------------------------------------------|
-| `NoSuchMethodError`     | Mixed Ktor versions – verify BOM and remove explicit versions. |
-| SLF4J warnings          | Add a logging backend dependency.                              |
-| 404 resolving artifacts | `gradlew --refresh-dependencies`; check repository lines.      |
-| Port conflict           | Change port or free the process.                               |
-| Missing hints in IDE    | Enable Kotlin inlay hints in Settings.                         |
+| Issue                             | Solution                                                             |
+|-----------------------------------|----------------------------------------------------------------------|
+| `NoSuchMethodError` with Ktor     | Mixed Ktor versions - verify BOM and remove explicit versions        |
+| `java` command not found          | Add `%JAVA_HOME%\bin` to PATH (not just `%JAVA_HOME%`)               |
+| Port 4207 already in use          | Change `httpPort` in config or free the port                         |
+| Static files not found in JAR     | Ensure `useFileSystemAssets = false` in production config            |
+| Database migration errors         | Delete `build/local.mv.db` and restart for fresh database            |
+| Cookie authentication not working | Check `cookieEncryptionKey` and `cookieSigningKey` are set correctly |
+| CORS errors                       | Verify CORS configuration in `Main.kt`                               |
+| 404 for API endpoints             | Ensure routes are prefixed with `/api`                               |
+
+## Contribution Guidelines
+
+1. **Keep BOM aligned** - Avoid mixing Ktor versions; use BOM for all Ktor modules
+2. **Add KDoc** - Document public APIs and complex functions
+3. **Run tests before commits** - `./gradlew test`
+4. **Update README** - Document new endpoints, configuration, or major changes
+5. **Follow project structure** - Keep separation between layers (web, service, db)
+6. **Use functional error handling** - Leverage Arrow's `Either` and `Raise` DSL
+7. **Add migrations for schema changes** - Create Flyway migration files in `db/migration`
+8. **Test both authentication methods** - Ensure changes work with cookies and JWT
+
+## Documentation
+
+- **AUTHENTICATION-GUIDE.md** - Comprehensive guide covering cookie and JWT authentication with examples
+- **Main.kt KDoc** - Detailed documentation of application architecture and routing
+- **Code comments** - Inline explanations throughout the codebase
+
+## License
+
+This is a playground/learning project. Feel free to use, modify, and experiment!
 
 ---
-Experiment freely; extend routes; add middleware. Happy coding!
+
+**Happy coding!** Experiment freely, extend routes, add middleware, and build something awesome.
+
