@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  web-playground:
+    image: web-playground:latest
+    container_name: web-playground
+    ports:
+      - "9000:4207"
+    environment:
+      - WEB_PLAYGROUND_ENV=${WEB_PLAYGROUND_ENV:-prod}
+      - WEB_PLAYGROUND_HTTP_PORT=${WEB_PLAYGROUND_HTTP_PORT:-4207}
+      - WEB_PLAYGROUND_DB_USER=${WEB_PLAYGROUND_DB_USER}
+      - WEB_PLAYGROUND_DB_PASSWORD=${WEB_PLAYGROUND_DB_PASSWORD}
+      - WEB_PLAYGROUND_DB_URL=${WEB_PLAYGROUND_DB_URL}
+      - WEB_PLAYGROUND_USE_SECURE_COOKIE=${WEB_PLAYGROUND_USE_SECURE_COOKIE:-true}
+      - WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=${WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY}
+      - WEB_PLAYGROUND_COOKIE_SIGNING_KEY=${WEB_PLAYGROUND_COOKIE_SIGNING_KEY}
+    # Optional: mount volume for persistent database
+    # volumes:
+    #   - ./data:/app/build
+    restart: unless-stopped

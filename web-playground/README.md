@@ -14,6 +14,30 @@ This playground application provides a production-ready foundation for building 
 - **Coroutine-based async operations** with HTTP client examples
 - **Comprehensive testing** with integration and unit tests
 
+## Table of Contents
+
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Requirements](#requirements)
+- [Running the Application](#running-the-application)
+- [Building & Packaging](#building--packaging)
+- [Docker](#docker)
+- [Common Gradle Tasks](#common-gradle-tasks)
+- [Testing](#testing)
+- [Database](#database)
+- [Authentication](#authentication)
+- [Error Handling](#error-handling)
+- [Logging](#logging)
+- [Single Page Application (SPA) Support](#single-page-application-spa-support)
+- [Dependency & Version Management](#dependency--version-management)
+- [JDK Toolchain](#jdk-toolchain)
+- [Future Enhancements](#future-enhancements)
+- [Troubleshooting](#troubleshooting)
+- [Contribution Guidelines](#contribution-guidelines)
+- [Documentation](#documentation)
+- [License](#license)
+
 ## Tech Stack
 
 ### Core Framework
@@ -340,6 +364,132 @@ Create ZIP distribution:
 ```bash
 ./gradlew distZip
 ```
+
+## Docker
+
+The project includes a Dockerfile for containerization using Amazon Corretto Java 24 on Alpine Linux.
+
+### Build Docker Image
+
+First, build the fat JAR:
+
+Windows:
+
+```bat
+gradlew.bat shadowJar
+```
+
+Unix-like:
+
+```bash
+./gradlew shadowJar
+```
+
+Then build the Docker image:
+
+```bash
+docker build -f Dockerfile -t web-playground:latest .
+```
+
+### Run Application in Docker
+
+#### Option 1: Docker Compose (Recommended)
+
+The easiest way to run the application with all necessary environment variables:
+
+1. **Copy the example environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` file with your configuration** (optional - defaults work for local testing)
+
+3. **Run with Docker Compose:**
+   ```bash
+   docker-compose up -d
+   ```
+
+4. **View logs:**
+   ```bash
+   docker-compose logs -f
+   ```
+
+5. **Stop the application:**
+   ```bash
+   docker-compose down
+   ```
+
+The application will be accessible at **http://localhost:9000/**
+
+#### Option 2: Docker Run (Basic)
+
+Run the container directly with default local configuration:
+
+```bash
+docker run -p 9000:4207 --name web-playground web-playground:latest
+```
+
+#### Option 3: Docker Run with Environment Variables
+
+For production with custom configuration:
+
+```bash
+docker run -p 9000:4207 --name web-playground \
+  -e WEB_PLAYGROUND_ENV=prod \
+  -e WEB_PLAYGROUND_HTTP_PORT=4207 \
+  -e WEB_PLAYGROUND_DB_USER="" \
+  -e WEB_PLAYGROUND_DB_PASSWORD="" \
+  -e WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" \
+  -e WEB_PLAYGROUND_USE_SECURE_COOKIE=false \
+  web-playground:latest
+```
+
+#### Option 4: Docker Run with Environment File
+
+```bash
+docker run -p 9000:4207 --name web-playground --env-file .env web-playground:latest
+```
+
+The application will be accessible at **http://localhost:9000/**
+
+### Docker Commands
+
+| Command                                                               | Description               |
+|-----------------------------------------------------------------------|---------------------------|
+| `docker build -f Dockerfile -t web-playground:latest .`               | Build Docker image        |
+| `docker-compose up -d`                                                | Start with Docker Compose |
+| `docker-compose down`                                                 | Stop Docker Compose       |
+| `docker-compose logs -f`                                              | View Docker Compose logs  |
+| `docker run -p 9000:4207 --name web-playground web-playground:latest` | Run container (direct)    |
+| `docker ps`                                                           | List running containers   |
+| `docker logs web-playground`                                          | View container logs       |
+| `docker stop web-playground`                                          | Stop the container        |
+| `docker rm web-playground`                                            | Remove the container      |
+| `docker rmi web-playground:latest`                                    | Remove the image          |
+
+### Environment Configuration
+
+The application uses environment variables for configuration when running in production mode (
+`WEB_PLAYGROUND_ENV=prod`):
+
+| Variable                           | Description                   | Example Value                                                  |
+|------------------------------------|-------------------------------|----------------------------------------------------------------|
+| `WEB_PLAYGROUND_ENV`               | Environment name              | `prod` (or `local` for default)                                |
+| `WEB_PLAYGROUND_HTTP_PORT`         | HTTP server port              | `4207`                                                         |
+| `WEB_PLAYGROUND_DB_USER`           | Database username             | `` (empty for H2 embedded)                                     |
+| `WEB_PLAYGROUND_DB_PASSWORD`       | Database password             | `` (empty for H2 embedded)                                     |
+| `WEB_PLAYGROUND_DB_URL`            | JDBC connection URL           | `jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;` |
+| `WEB_PLAYGROUND_USE_SECURE_COOKIE` | Enable secure cookies (HTTPS) | `false` (local), `true` (production with HTTPS)                |
+
+**See `.env.example` for a complete configuration template.**
+
+### Docker Image Details
+
+- **Base Image**: `amazoncorretto:24.0.2-alpine3.22`
+- **Java Version**: OpenJDK 24.0.2 (Amazon Corretto)
+- **OS**: Alpine Linux 3.22
+- **Application JAR**: `web-playground-1.0-SNAPSHOT-all.jar`
+- **Container Port**: 4207
 
 ## Common Gradle Tasks
 
