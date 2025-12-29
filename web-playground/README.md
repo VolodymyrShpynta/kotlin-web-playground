@@ -23,6 +23,7 @@ This playground application provides a production-ready foundation for building 
 - [Running the Application](#running-the-application)
 - [Building & Packaging](#building--packaging)
 - [Docker](#docker)
+- [Azure Deployment](#azure-deployment)
 - [Common Gradle Tasks](#common-gradle-tasks)
 - [Testing](#testing)
 - [Database](#database)
@@ -490,6 +491,42 @@ The application uses environment variables for configuration when running in pro
 - **OS**: Alpine Linux 3.22
 - **Application JAR**: `web-playground-1.0-SNAPSHOT-all.jar`
 - **Container Port**: 4207
+
+## Azure Deployment
+
+The application can be deployed to **Azure Container Apps** for production hosting with automatic scaling, HTTPS, and zero-downtime deployments.
+
+### Quick Start
+
+```powershell
+# 1. Build and tag image
+docker build -f Dockerfile -t web-playground:latest .
+
+# 2. Push to Azure Container Registry
+az acr create --resource-group web-playground-rg --name YOUR_UNIQUE_ACR_NAME --sku Basic
+az acr login --name YOUR_UNIQUE_ACR_NAME
+docker tag web-playground:latest YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+docker push YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+
+# 3. Deploy to Azure Container Apps
+az containerapp create --name web-playground-app --resource-group web-playground-rg --environment web-playground-env --image YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest --target-port 4207 --ingress external
+```
+
+### Complete Guide
+
+For detailed step-by-step instructions, troubleshooting, cost optimization, and advanced configuration, see:
+
+📘 **[AZURE-DEPLOYMENT.md](AZURE-DEPLOYMENT.md)** - Complete Azure Deployment Guide
+
+The guide includes:
+- Azure CLI installation and authentication
+- Creating Azure Container Registry (ACR)
+- Deploying to Azure Container Apps
+- Environment variable configuration with secrets
+- Monitoring, logging, and troubleshooting
+- Cost optimization strategies
+- CI/CD setup with GitHub Actions
+- Integration with Azure Database for PostgreSQL
 
 ## Common Gradle Tasks
 
