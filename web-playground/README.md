@@ -271,6 +271,8 @@ WEB_PLAYGROUND_ENV=prod ./gradlew run
 
 ### Testing Endpoints
 
+**Using cURL:**
+
 ```bash
 # Hello World
 curl http://localhost:4207/api
@@ -290,6 +292,46 @@ curl http://localhost:4207/api/db_test
 # Coroutine demo (async operations)
 curl http://localhost:4207/api/coroutine_demo
 ```
+
+**Using IntelliJ IDEA HTTP Client:**
+
+The project includes `test-requests.http` with pre-configured API requests and multiple environments.
+
+1. **Open the file**: `test-requests.http`
+
+2. **Select environment** from the dropdown in the HTTP client:
+   - `local` - Local development server (`http://127.0.0.1:4207`)
+   - `docker` - Docker container (`http://localhost:9000`)
+   - `azure` - Azure deployment (`https://your-app.azurecontainerapps.io`)
+
+3. **Run requests**: Click the ▶️ (Run) icon next to any request
+
+**Environment Configuration:**
+
+Environments are defined in `http-client.env.json`:
+
+```json
+{
+  "local": {
+    "BaseUrl": "http://127.0.0.1:4207"
+  },
+  "docker": {
+    "BaseUrl": "http://localhost:9000"
+  },
+  "azure": {
+    "BaseUrl": "https://web-playground-app.northeurope.azurecontainerapps.io"
+  }
+}
+```
+
+To add or modify environments, edit `http-client.env.json` and update the `BaseUrl` variable for each environment.
+
+**Available Test Requests:**
+- Basic endpoints (hello world, param test, JSON)
+- Database operations (get user, create user)
+- Authentication (login, logout, protected routes)
+- JWT authentication (login, protected endpoint)
+- HTML responses and coroutine demos
 
 ## Building & Packaging
 

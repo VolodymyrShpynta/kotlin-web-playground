@@ -1,25 +1,25 @@
 ### Root endpoint - Returns "Hello, World!"
-GET http://127.0.0.1:4207/api
+GET {{BaseUrl}}/api
 
 ###
 
 ### Param test - Echoes query parameter 'foo'
-GET http://127.0.0.1:4207/api/param_test?foo=test_value
+GET {{BaseUrl}}/api/param_test?foo=test_value
 
 ###
 
 ### JSON test - Returns simple JSON object
-GET http://127.0.0.1:4207/api/json_test
+GET {{BaseUrl}}/api/json_test
 
 ###
 
 ### JSON test with custom header
-GET http://127.0.0.1:4207/api/json_test_with_header
+GET {{BaseUrl}}/api/json_test_with_header
 
 ###
 
 ### JSON test - POST request with JSON body
-POST http://127.0.0.1:4207/api/json_test
+POST {{BaseUrl}}/api/json_test
 Content-Type: application/json
 
 {
@@ -28,41 +28,41 @@ Content-Type: application/json
 ###
 
 ### Database test - Simple DB query
-GET http://127.0.0.1:4207/api/db_test
+GET {{BaseUrl}}/api/db_test
 
 ###
 
 ### Get user from database - Returns first user as PublicUser
-GET http://127.0.0.1:4207/api/db_get_user
+GET {{BaseUrl}}/api/db_get_user
 
 ###
 
 ### Coroutine demo - Demonstrates async HTTP and DB calls
-GET http://127.0.0.1:4207/api/coroutine_demo
+GET {{BaseUrl}}/api/coroutine_demo
 
 ###
 
 ### HTML demo - HTML template response
-GET http://127.0.0.1:4207/api/html_demo
+GET {{BaseUrl}}/api/html_demo
 
 ###
 
 ### HTML WebResponse demo - HTML with AppLayout
-GET http://127.0.0.1:4207/api/html_webresponse_demo
+GET {{BaseUrl}}/api/html_webresponse_demo
 
 ###
 
 ### HTML WebResponse no layout demo - Plain HTML
-GET http://127.0.0.1:4207/api/html_webresponse_nolayout_demo
+GET {{BaseUrl}}/api/html_webresponse_nolayout_demo
 
 ###
 
 ###
-GET http://127.0.0.1:4207/api/users/1
+GET {{BaseUrl}}/api/users/1
 ###
 
 ###
-POST http://127.0.0.1:4207/api/users
+POST {{BaseUrl}}/api/users
 Content-Type: application/json
 
 {
@@ -74,7 +74,7 @@ Content-Type: application/json
 ###
 
 ### Login (GET - shows login form)
-GET http://127.0.0.1:4207/api/login
+GET {{BaseUrl}}/api/login
 
 ###
 
@@ -84,7 +84,7 @@ GET http://127.0.0.1:4207/api/login
 # The csrfToken must be included in X-CSRF-Token header for ALL authenticated requests
 # CSRF validation happens automatically in validate block for ALL HTTP methods (GET, POST, PUT, DELETE)
 # Failure returns: {"error": "Invalid credentials"} with 401 status
-POST http://127.0.0.1:4207/api/login
+POST {{BaseUrl}}/api/login
 Content-Type: application/x-www-form-urlencoded
 
 username=vshpynta@crud.business&password=1234
@@ -98,7 +98,7 @@ username=vshpynta@crud.business&password=1234
 # Error responses:
 #   - 401 Unauthorized: No session cookie (need to login)
 #   - 403 Forbidden: Invalid/missing CSRF token (check X-CSRF-Token header)
-GET http://127.0.0.1:4207/api/secret
+GET {{BaseUrl}}/api/secret
 X-CSRF-Token: f3ff20cb-e20b-404f-b734-42916b84dc9e
 Cookie: user-session=e6d34411b03deb9ba4734b8d46ae6551%2F87abcaecb352c77bc92c56182c2d1780d2409392f683ea6a1a8711f64f4d05498f9e67fc4d55bf0e87bfcbce43c007d32858eb671f0e1b3c8589dcfcce1a3d83%3Ab73200c31d4f92ccd2f88b2ae321031b582afb178a097b573b9bf77add42bac6
 ###
@@ -106,11 +106,11 @@ Cookie: user-session=e6d34411b03deb9ba4734b8d46ae6551%2F87abcaecb352c77bc92c5618
 ### Logout - Clears session and returns JSON confirmation
 # Returns: {"success": true, "message": "Logged out successfully"}
 # Frontend should handle redirect to login page if needed
-GET http://127.0.0.1:4207/api/logout
+GET {{BaseUrl}}/api/logout
 ###
 
 ### JWT Login - Obtain JWT token
-POST http://127.0.0.1:4207/api/jwt/login
+POST {{BaseUrl}}/api/jwt/login
 Content-Type: application/json
 
 {
@@ -121,6 +121,6 @@ Content-Type: application/json
 
 ### JWT Secret endpoint - Access protected resource with JWT
 # Include the JWT token obtained from /api/jwt/login in the Authorization header
-GET http://127.0.0.1:4207/api/jwt/secret
+GET {{BaseUrl}}/api/jwt/secret
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJteUFwcCIsImlzcyI6Imh0dHA6Ly8wLjAuMC4wOjQyMDciLCJ1c2VySWQiOjEsImV4cCI6MTc2NjE4NDg2MH0.ebAQYt20wWK4rTIFKvv5HS0AK2X6a4lPwgY8MkyYYXk
 ###
