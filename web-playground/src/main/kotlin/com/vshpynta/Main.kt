@@ -26,6 +26,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import com.typesafe.config.ConfigFactory
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
+import com.vshpynta.config.getStringListOrCommaSeparated
 import com.vshpynta.db.mapFromRow
 import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
@@ -232,20 +233,24 @@ fun Application.setUpKtorApplication(
     // - Frontend(s) can be hosted on myapp.com, another-domain.org, etc.
     // - Each allowed domain must be explicitly configured
     // - Uses SameSite=None for cross-domain cookies (less secure than Lax, but necessary)
+    //
+    // Configuration is loaded from app-<env>.conf files:
+    // - cors.allowedHosts: hosts allowed for any protocol (HTTP/HTTPS)
+    // - cors.allowedHttpsHosts: hosts allowed only via HTTPS (production)
     install(CORS) {
         // HTTP methods GET, POST are allowed by default
         allowMethod(HttpMethod.Put)
         allowMethod(HttpMethod.Delete)
 
-        // Development: Allow localhost with different ports (cross-origin for dev)
-        allowHost("localhost:4207")
-        allowHost("127.0.0.1:9876")
+        // Allow hosts from configuration (any protocol)
+        webappConfig.corsAllowedHosts.forEach { host ->
+            allowHost(host)
+        }
 
-        // Production: Explicitly allowed domains (HTTPS enforced)
-        // Add ALL domains that should be able to authenticate
-        // Examples of different domains (not just subdomains):
-        allowHost("www.myapp.com", schemes = listOf("https"))
-        allowHost("another-domain.org", schemes = listOf("https"))
+        // Allow HTTPS-only hosts from configuration (production)
+        webappConfig.corsAllowedHttpsHosts.forEach { host ->
+            allowHost(host, schemes = listOf("https"))
+        }
 
         // Required for cookie-based authentication across origins
         allowCredentials = true
@@ -959,6 +964,8 @@ fun createAppConfig(env: String) =
                 useSecureCookie = it.getBoolean("useSecureCookie"),
                 cookieSameSite = it.getString("cookieSameSite"),
                 cookieEncryptionKey = it.getString("cookieEncryptionKey"),
-                cookieSigningKey = it.getString("cookieSigningKey")
+                cookieSigningKey = it.getString("cookieSigningKey"),
+                corsAllowedHosts = it.getStringListOrCommaSeparated("cors.allowedHosts"),
+                corsAllowedHttpsHosts = it.getStringListOrCommaSeparated("cors.allowedHttpsHosts")
             )
         }

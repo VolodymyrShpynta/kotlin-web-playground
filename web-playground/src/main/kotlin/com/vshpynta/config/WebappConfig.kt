@@ -15,6 +15,8 @@ package com.vshpynta.config
  * @property cookieSameSite SameSite cookie attribute (lax, strict, or none).
  * @property cookieEncryptionKey Key for encrypting session cookies.
  * @property cookieSigningKey Key for signing session cookies.
+ * @property corsAllowedHosts List of allowed hosts for CORS (format: "host:port" or just "host").
+ * @property corsAllowedHttpsHosts List of allowed HTTPS-only hosts for CORS.
  */
 data class WebappConfig(
     val httpPort: Int,
@@ -25,5 +27,7 @@ data class WebappConfig(
     val useSecureCookie: Boolean,
     val cookieSameSite: String,
     val cookieEncryptionKey: String,
-    val cookieSigningKey: String
+    val cookieSigningKey: String,
+    val corsAllowedHosts: List<String>,
+    val corsAllowedHttpsHosts: List<String>
 )

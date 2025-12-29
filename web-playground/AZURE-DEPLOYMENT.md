@@ -37,6 +37,11 @@ $appName = "web-playground-app"
 $cookieEncryptionKey = "1d13f63b868ad26c46151245e1b5175c"
 $cookieSigningKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f"
 
+# CORS Configuration
+# Format: comma-separated list of hosts (simpler format)
+# For multiple hosts: $corsAllowedHttpsHosts = "host1.com,host2.com,host3.com"
+$corsAllowedHttpsHosts = "web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io"
+
 # Optional: Database Configuration (for PostgreSQL setup)
 $dbServerName = "web-playground-db"
 $dbAdminUser = "myadmin"
@@ -250,7 +255,7 @@ az containerapp secret set --name $appName --resource-group $resourceGroup --sec
 ### Update Environment Variables
 
 ```powershell
-az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts
 ```
 
 **Note**: `secretref:cookie-encryption-key` references the secret created in the previous step.
@@ -360,7 +365,7 @@ az containerapp secret set --name $appName --resource-group $resourceGroup --sec
 
 # 11. Configure environment variables
 Write-Host "Step 11: Configuring environment variables..." -ForegroundColor Green
-az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts
 
 # 12. Get application URL
 Write-Host "Step 12: Deployment complete!" -ForegroundColor Green
@@ -672,6 +677,42 @@ az containerapp hostname add --name $appName --resource-group $resourceGroup --h
 # Bind certificate
 az containerapp hostname bind --name $appName --resource-group $resourceGroup --hostname $customDomain --environment $envName --validation-method CNAME
 ```
+
+### Update CORS Allowed Hosts (Without Redeployment)
+
+You can add or update CORS allowed hosts dynamically without rebuilding/redeploying the application:
+
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
+**Add a new domain to CORS allowed hosts:**
+
+```powershell
+# Update CORS configuration (HTTPS-only hosts for production)
+# Use comma-separated format for multiple hosts
+$corsAllowedHttpsHosts = "web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io,app.yourdomain.com,newdomain.com"
+
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts
+```
+
+**Restart the container to apply changes:**
+
+```powershell
+# Restart will happen automatically, or you can force it:
+az containerapp revision restart --name $appName --resource-group $resourceGroup --revision <REVISION_NAME>
+```
+
+**View current CORS configuration:**
+
+```powershell
+az containerapp show --name $appName --resource-group $resourceGroup --query "properties.template.containers[0].env[?name=='WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS'].value" -o tsv
+```
+
+**Benefits of environment variable-based CORS:**
+- ✅ No code changes required
+- ✅ No rebuild/redeploy needed
+- ✅ Update takes effect on next container restart (~30 seconds)
+- ✅ Can be changed via Azure Portal or CLI
+- ✅ Supports dynamic multi-tenant scenarios
 
 ### Enable Application Insights
 
