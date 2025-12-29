@@ -10,8 +10,53 @@ Container Registry (ACR).
 - **Docker**: Already installed for local development
 - **Built Docker Image**: `docker build -f Dockerfile -t web-playground:latest .`
 
+## Configuration Variables
+
+**⚠️ IMPORTANT**: Set these variables once at the beginning. All commands in this guide use these variables.
+
+Copy and execute this entire block in your PowerShell terminal:
+
+```powershell
+# ====================================
+# Azure Configuration Variables
+# ====================================
+# Customize these values for your deployment
+
+# Azure Resource Configuration
+$resourceGroup = "web-playground-rg"
+$location = "northeurope"  # Options: eastus, westeurope, northeurope, westus2, etc.
+
+# Azure Container Registry (must be globally unique, lowercase, alphanumeric only, 5-50 chars)
+$acrName = "vshpyntawebplaygroundacr"  # Change this to YOUR unique name
+
+# Azure Container Apps
+$envName = "web-playground-env"
+$appName = "web-playground-app"
+
+# Application Secrets (from the .env file)
+$cookieEncryptionKey = "1d13f63b868ad26c46151245e1b5175c"
+$cookieSigningKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f"
+
+# Optional: Database Configuration (for PostgreSQL setup)
+$dbServerName = "web-playground-db"
+$dbAdminUser = "myadmin"
+$dbAdminPassword = "YourSecurePassword123!"  # Change this!
+
+# Optional: Custom Domain and Insights
+$customDomain = "www.yourdomain.com"  # Change this!
+$insightsName = "web-playground-insights"
+
+Write-Host "✅ Variables configured successfully!" -ForegroundColor Green
+Write-Host "ACR Name: $acrName" -ForegroundColor Yellow
+Write-Host "Resource Group: $resourceGroup" -ForegroundColor Yellow
+Write-Host "Location: $location" -ForegroundColor Yellow
+```
+
+**After running this block, you can copy-paste any command from this guide without modification!**
+
 ## Table of Contents
 
+- [Configuration Variables](#configuration-variables)
 - [Step 1: Install and Login to Azure CLI](#step-1-install-and-login-to-azure-cli)
 - [Step 2: Create Azure Container Registry (ACR)](#step-2-create-azure-container-registry-acr)
 - [Step 3: Push Docker Image to ACR](#step-3-push-docker-image-to-acr)
@@ -89,45 +134,41 @@ az account set --subscription "Your Subscription Name"
 
 ## Step 2: Create Azure Container Registry (ACR)
 
+> **Note**: This step uses variables from the [Configuration Variables](#configuration-variables) section. Make sure you've set them first.
+
 ### Create Resource Group
 
 ```powershell
-az group create --name web-playground-rg --location northeurope
+az group create --name $resourceGroup --location $location
 ```
 
 **Available locations**: `eastus`, `westeurope`, `northeurope`, `westus2`, etc. Choose the one closest to your users.
 
 ### Create Azure Container Registry
 
-**Important**: ACR name must be globally unique, lowercase, alphanumeric only (no dashes, underscores), 5-50 characters.
-
 ```powershell
-az acr create --resource-group web-playground-rg --name YOUR_UNIQUE_ACR_NAME --sku Basic --admin-enabled true
-```
-
-**Example**:
-
-```powershell
-az acr create --resource-group web-playground-rg --name vshpyntawebplaygroundacr --sku Basic --admin-enabled true
+az acr create --resource-group $resourceGroup --name $acrName --sku Basic --admin-enabled true
 ```
 
 ### Login to ACR
 
 ```powershell
-az acr login --name YOUR_UNIQUE_ACR_NAME
+az acr login --name $acrName
 ```
 
 **If login fails**, try Docker login directly:
 
 ```powershell
 # Get credentials
-az acr credential show --name YOUR_UNIQUE_ACR_NAME
+az acr credential show --name $acrName
 
 # Login with Docker
-docker login YOUR_UNIQUE_ACR_NAME.azurecr.io
+docker login "$acrName.azurecr.io"
 ```
 
 ## Step 3: Push Docker Image to ACR
+
+> **Note**: This step uses variables from the [Configuration Variables](#configuration-variables) section.
 
 ### Build Docker Image (if not already built)
 
@@ -142,19 +183,13 @@ docker build -f Dockerfile -t web-playground:latest .
 ### Tag Image for ACR
 
 ```powershell
-docker tag web-playground:latest YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
-```
-
-**Example**:
-
-```powershell
-docker tag web-playground:latest vshpyntawebplaygroundacr.azurecr.io/web-playground:latest
+docker tag web-playground:latest "$acrName.azurecr.io/web-playground:latest"
 ```
 
 ### Push Image to ACR
 
 ```powershell
-docker push YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+docker push "$acrName.azurecr.io/web-playground:latest"
 ```
 
 The first push will take a few minutes as it uploads all layers. Subsequent pushes are incremental and much faster.
@@ -163,24 +198,26 @@ The first push will take a few minutes as it uploads all layers. Subsequent push
 
 ```powershell
 # List all repositories
-az acr repository list --name YOUR_UNIQUE_ACR_NAME --output table
+az acr repository list --name $acrName --output table
 
 # List tags for specific repository
-az acr repository show-tags --name YOUR_UNIQUE_ACR_NAME --repository web-playground --output table
+az acr repository show-tags --name $acrName --repository web-playground --output table
 ```
 
 ## Step 4: Deploy to Azure Container Apps
 
+> **Note**: This step uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### Get ACR Credentials
 
 ```powershell
-$acrPassword = az acr credential show --name YOUR_UNIQUE_ACR_NAME --query "passwords[0].value" -o tsv
+$acrPassword = az acr credential show --name $acrName --query "passwords[0].value" -o tsv
 ```
 
 ### Create Container Apps Environment
 
 ```powershell
-az containerapp env create --name web-playground-env --resource-group web-playground-rg --location northeurope
+az containerapp env create --name $envName --resource-group $resourceGroup --location $location
 ```
 
 This creates a managed environment for your container apps. Takes about 2-3 minutes.
@@ -188,7 +225,7 @@ This creates a managed environment for your container apps. Takes about 2-3 minu
 ### Deploy the Application
 
 ```powershell
-az containerapp create --name web-playground-app --resource-group web-playground-rg --environment web-playground-env --image YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest --target-port 4207 --ingress external --registry-server YOUR_UNIQUE_ACR_NAME.azurecr.io --registry-username YOUR_UNIQUE_ACR_NAME --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
+az containerapp create --name $appName --resource-group $resourceGroup --environment $envName --image "$acrName.azurecr.io/web-playground:latest" --target-port 4207 --ingress external --registry-server "$acrName.azurecr.io" --registry-username $acrName --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
 ```
 
 **Parameters explained**:
@@ -200,24 +237,20 @@ az containerapp create --name web-playground-app --resource-group web-playground
 
 ## Step 5: Configure Environment Variables
 
+> **Note**: This step uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### Set Secrets (Recommended for Sensitive Data)
 
 Store sensitive values like encryption keys as secrets:
 
 ```powershell
-az containerapp secret set --name web-playground-app --resource-group web-playground-rg --secrets cookie-encryption-key=YOUR_ENCRYPTION_KEY cookie-signing-key=YOUR_SIGNING_KEY
-```
-
-**Example** (replace with your actual keys from `.env` file):
-
-```powershell
-az containerapp secret set --name web-playground-app --resource-group web-playground-rg --secrets cookie-encryption-key=1d13f63b868ad26c46151245e1b5175c cookie-signing-key=d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f
+az containerapp secret set --name $appName --resource-group $resourceGroup --secrets cookie-encryption-key=$cookieEncryptionKey cookie-signing-key=$cookieSigningKey
 ```
 
 ### Update Environment Variables
 
 ```powershell
-az containerapp update --name web-playground-app --resource-group web-playground-rg --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key
 ```
 
 **Note**: `secretref:cookie-encryption-key` references the secret created in the previous step.
@@ -225,15 +258,18 @@ az containerapp update --name web-playground-app --resource-group web-playground
 ### Verify Environment Variables
 
 ```powershell
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.template.containers[0].env
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.template.containers[0].env
 ```
 
 ## Step 6: Get Application URL
 
+> **Note**: This step uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### Retrieve Your Application URL
 
 ```powershell
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.configuration.ingress.fqdn -o tsv
+$appUrl = az containerapp show --name $appName --resource-group $resourceGroup --query properties.configuration.ingress.fqdn -o tsv
+Write-Host "Application URL: https://$appUrl" -ForegroundColor Green
 ```
 
 Your application will be accessible at: `https://web-playground-app.<region>.azurecontainerapps.io`
@@ -241,12 +277,15 @@ Your application will be accessible at: `https://web-playground-app.<region>.azu
 ### Test Your Deployment
 
 ```powershell
-$appUrl = az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.configuration.ingress.fqdn -o tsv
-
 # Test endpoints
-curl https://$appUrl/api
-curl https://$appUrl/api/json_test
-curl https://$appUrl/api/users/1
+curl "https://$appUrl/api"
+curl "https://$appUrl/api/json_test"
+curl "https://$appUrl/api/users/1"
+```
+
+Or open in browser:
+```powershell
+Start-Process "https://$appUrl"
 ```
 
 Or open in browser:
@@ -333,6 +372,8 @@ az containerapp show --name $appName --resource-group $resourceGroup --query pro
 
 When you make changes to your application and want to deploy a new version:
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### Quick Update Process
 
 ```powershell
@@ -343,13 +384,13 @@ gradlew.bat clean build shadowJar
 docker build -f Dockerfile -t web-playground:latest .
 
 # 3. Tag with ACR registry
-docker tag web-playground:latest YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+docker tag web-playground:latest "$acrName.azurecr.io/web-playground:latest"
 
 # 4. Push to ACR
-docker push YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+docker push "$acrName.azurecr.io/web-playground:latest"
 
 # 5. Update Container App (triggers new revision with zero-downtime deployment)
-az containerapp update --name web-playground-app --resource-group web-playground-rg --image YOUR_UNIQUE_ACR_NAME.azurecr.io/web-playground:latest
+az containerapp update --name $appName --resource-group $resourceGroup --image "$acrName.azurecr.io/web-playground:latest"
 ```
 
 ### Update Only Configuration
@@ -357,7 +398,7 @@ az containerapp update --name web-playground-app --resource-group web-playground
 If you only need to change environment variables:
 
 ```powershell
-az containerapp update --name web-playground-app --resource-group web-playground-rg --set-env-vars KEY=VALUE
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars KEY=VALUE
 ```
 
 ## Azure Container Apps Features
@@ -399,27 +440,29 @@ Your deployed application automatically benefits from:
 
 ## Monitoring and Logs
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### View Live Logs
 
 ```powershell
 # Stream live logs
-az containerapp logs show --name web-playground-app --resource-group web-playground-rg --follow
+az containerapp logs show --name $appName --resource-group $resourceGroup --follow
 
 # View recent logs (last 50 lines)
-az containerapp logs show --name web-playground-app --resource-group web-playground-rg --tail 50
+az containerapp logs show --name $appName --resource-group $resourceGroup --tail 50
 ```
 
 ### View Container App Details
 
 ```powershell
 # Show all details
-az containerapp show --name web-playground-app --resource-group web-playground-rg
+az containerapp show --name $appName --resource-group $resourceGroup
 
 # Show only URL
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.configuration.ingress.fqdn -o tsv
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.configuration.ingress.fqdn -o tsv
 
 # Show environment variables
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.template.containers[0].env
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.template.containers[0].env
 ```
 
 ### Manage Revisions
@@ -428,26 +471,26 @@ Azure Container Apps uses **revisions** for deployment history:
 
 ```powershell
 # List all revisions
-az containerapp revision list --name web-playground-app --resource-group web-playground-rg --output table
+az containerapp revision list --name $appName --resource-group $resourceGroup --output table
 
 # Show specific revision
-az containerapp revision show --name web-playground-app --resource-group web-playground-rg --revision REVISION_NAME
+az containerapp revision show --name $appName --resource-group $resourceGroup --revision REVISION_NAME
 
 # Activate a specific revision (rollback)
-az containerapp revision activate --name web-playground-app --resource-group web-playground-rg --revision REVISION_NAME
+az containerapp revision activate --name $appName --resource-group $resourceGroup --revision REVISION_NAME
 
 # Deactivate a revision
-az containerapp revision deactivate --name web-playground-app --resource-group web-playground-rg --revision REVISION_NAME
+az containerapp revision deactivate --name $appName --resource-group $resourceGroup --revision REVISION_NAME
 ```
 
 ### Scale Configuration
 
 ```powershell
 # Set min/max replicas
-az containerapp update --name web-playground-app --resource-group web-playground-rg --min-replicas 0 --max-replicas 5
+az containerapp update --name $appName --resource-group $resourceGroup --min-replicas 0 --max-replicas 5
 
 # View current scale settings
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.template.scale
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.template.scale
 ```
 
 ## Troubleshooting
@@ -468,42 +511,47 @@ az containerapp show --name web-playground-app --resource-group web-playground-r
 
 ### Debug Commands
 
+> **Note**: These commands use variables from the [Configuration Variables](#configuration-variables) section.
+
 ```powershell
+
 # Check Container App status
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.runningStatus
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.runningStatus
 
 # View all environment variables
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.template.containers[0].env
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.template.containers[0].env
 
 # View secrets (names only, not values)
-az containerapp secret show --name web-playground-app --resource-group web-playground-rg
+az containerapp secret show --name $appName --resource-group $resourceGroup
 
 # Check ingress configuration
-az containerapp show --name web-playground-app --resource-group web-playground-rg --query properties.configuration.ingress
+az containerapp show --name $appName --resource-group $resourceGroup --query properties.configuration.ingress
 ```
 
 ## Clean Up Resources
 
 When you want to delete everything and stop incurring charges:
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ### Delete Entire Resource Group
 
 ```powershell
 # Delete resource group (removes all resources: ACR, Container App, environment)
-az group delete --name web-playground-rg --yes --no-wait
+az group delete --name $resourceGroup --yes --no-wait
 ```
 
 ### Delete Individual Resources
 
 ```powershell
 # Delete Container App only
-az containerapp delete --name web-playground-app --resource-group web-playground-rg --yes
+az containerapp delete --name $appName --resource-group $resourceGroup --yes
 
 # Delete Container App environment
-az containerapp env delete --name web-playground-env --resource-group web-playground-rg --yes
+az containerapp env delete --name $envName --resource-group $resourceGroup --yes
 
 # Delete ACR
-az acr delete --name YOUR_UNIQUE_ACR_NAME --resource-group web-playground-rg --yes
+az acr delete --name $acrName --resource-group $resourceGroup --yes
 ```
 
 ## Cost Optimization
@@ -552,18 +600,22 @@ If app scales to zero during idle hours (e.g., 50% idle time), cost reduces by ~
 
 Replace H2 embedded database with managed PostgreSQL:
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ```powershell
+
 # Create PostgreSQL server
-az postgres flexible-server create --resource-group web-playground-rg --name web-playground-db --location northeurope --admin-user myadmin --admin-password <your-password> --sku-name Standard_B1ms --storage-size 32
+az postgres flexible-server create --resource-group $resourceGroup --name $dbServerName --location $location --admin-user $dbAdminUser --admin-password $dbAdminPassword --sku-name Standard_B1ms --storage-size 32
 
 # Get connection string
-az postgres flexible-server show-connection-string --server-name web-playground-db
+az postgres flexible-server show-connection-string --server-name $dbServerName
 ```
 
 Update environment variables:
 
 ```powershell
-az containerapp update --name web-playground-app --resource-group web-playground-rg --set-env-vars WEB_PLAYGROUND_DB_URL="jdbc:postgresql://web-playground-db.postgres.database.azure.com:5432/postgres?ssl=true" WEB_PLAYGROUND_DB_USER=myadmin WEB_PLAYGROUND_DB_PASSWORD=<your-password>
+$dbUrl = "jdbc:postgresql://$dbServerName.postgres.database.azure.com:5432/postgres?ssl=true"
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_DB_URL="$dbUrl" WEB_PLAYGROUND_DB_USER=$dbAdminUser WEB_PLAYGROUND_DB_PASSWORD=$dbAdminPassword
 ```
 
 ### Set up CI/CD with GitHub Actions
@@ -611,25 +663,30 @@ jobs:
 
 ### Configure Custom Domain
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ```powershell
 # Add custom domain
-az containerapp hostname add --name web-playground-app --resource-group web-playground-rg --hostname www.yourdomain.com
+az containerapp hostname add --name $appName --resource-group $resourceGroup --hostname $customDomain
 
 # Bind certificate
-az containerapp hostname bind --name web-playground-app --resource-group web-playground-rg --hostname www.yourdomain.com --environment web-playground-env --validation-method CNAME
+az containerapp hostname bind --name $appName --resource-group $resourceGroup --hostname $customDomain --environment $envName --validation-method CNAME
 ```
 
 ### Enable Application Insights
 
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
 ```powershell
+
 # Create Application Insights
-az monitor app-insights component create --app web-playground-insights --location northeurope --resource-group web-playground-rg
+az monitor app-insights component create --app $insightsName --location $location --resource-group $resourceGroup
 
 # Get instrumentation key
-$instrumentationKey = az monitor app-insights component show --app web-playground-insights --resource-group web-playground-rg --query instrumentationKey -o tsv
+$instrumentationKey = az monitor app-insights component show --app $insightsName --resource-group $resourceGroup --query instrumentationKey -o tsv
 
 # Update Container App
-az containerapp update --name web-playground-app --resource-group web-playground-rg --set-env-vars APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=$instrumentationKey"
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=$instrumentationKey"
 ```
 
 ## Additional Resources
