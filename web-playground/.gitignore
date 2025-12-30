@@ -1,6 +1,7 @@
+# Gradle wrapper and version catalog should NOT be ignored
+# Only ignore: .gradle/ (cache)
 .gradle/
 build/
-gradle/
 !**/src/main/**/build/
 !**/src/test/**/build/
 .kotlin
