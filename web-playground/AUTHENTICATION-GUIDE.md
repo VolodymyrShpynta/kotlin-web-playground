@@ -212,7 +212,7 @@ validate { session ->        Challenge block
 
 ### CORS Configuration
 
-Located in `src/main/kotlin/com/vshpynta/Main.kt`:
+Located in `main-app/src/main/kotlin/com/vshpynta/Main.kt`:
 
 ```kotlin
 install(CORS) {
@@ -1398,7 +1398,7 @@ export WEB_PLAYGROUND_ENV=prod
 
 To allow a new domain to authenticate:
 
-1. **Update CORS configuration** in `src/main/kotlin/com/vshpynta/Main.kt`:
+1. **Update CORS configuration** in `main-app/src/main/kotlin/com/vshpynta/Main.kt`:
    ```kotlin
    install(CORS) {
        // ...existing configuration...

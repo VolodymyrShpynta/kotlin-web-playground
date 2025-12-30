@@ -6,7 +6,6 @@
  * - Ktor server setup with cookie-based session authentication
  * - Route definitions for API endpoints (hello world, user management, auth)
  * - Database connection pooling with HikariCP and Flyway migrations
- * - Demo third-party service for showcasing coroutine-based HTTP calls
  *
  * The application uses functional error handling with Arrow's Either and Raise DSL,
  * separating validation errors from database errors while maintaining a unified error flow.
@@ -93,7 +92,6 @@ import io.ktor.util.hex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.html.ButtonType
 import kotlinx.html.FormMethod
@@ -146,7 +144,6 @@ private val log = LoggerFactory.getLogger("com.vshpynta.Main")
  * Application entry point for starting the Ktor Netty server.
  * - Loads configuration based on environment variable `WEB_PLAYGROUND_ENV` (defaults to 'local').
  * - Migrates the database using Flyway.
- * - Starts a demo third-party service for coroutine examples.
  * - Launches the main Ktor server on the configured port.
  *
  * Delegates configuration to [Application.setUpKtorApplication] for testability and separation of concerns.
@@ -163,8 +160,6 @@ fun main() {
     val dataSource = createAndMigrateDataSource(appConfig)
     log.debug("Database connection pool initialized: {}", dataSource)
 
-    // Start a simple third-party service to demonstrate coroutine usage
-    startThirdPartyService()
 
     // embeddedServer creates and starts the engine. `wait = true` blocks the main thread.
     embeddedServer(Netty, port = appConfig.httpPort) {
@@ -174,34 +169,6 @@ fun main() {
     }.start(wait = true)
 }
 
-/**
- * Starts a demo third-party service on port 9876 for coroutine and HTTP client examples.
- * Provides endpoints:
- * - GET /random_number: returns a random number after a random delay
- * - GET /ping: returns 'pong'
- * - POST /reverse: reverses the posted body text
- *
- * This service is used in the /coroutine_demo endpoint to demonstrate async HTTP calls.
- */
-fun startThirdPartyService() {
-    embeddedServer(Netty, port = 9876) {
-        routing {
-            get("/random_number", webResponse {
-                val num = (200L..2000L).random()
-                delay(num)
-                TextWebResponse(num.toString())
-            })
-
-            get("/ping", webResponse {
-                TextWebResponse("pong")
-            })
-
-            post("/reverse", webResponse {
-                TextWebResponse(call.receiveText().reversed())
-            })
-        }
-    }.start(wait = false)
-}
 
 /**
  * Ktor application module installed both in production (via `main`) and tests (via testApplication {}).
@@ -258,7 +225,7 @@ fun Application.setUpKtorApplication(
 
     routing {
         singlePageApplicationRoutes(webappConfig)
-        helloWorldApiRoutes(dataSource)
+        helloWorldApiRoutes(webappConfig, dataSource)
         userApiRoutes(dataSource)
     }
 }
@@ -622,7 +589,8 @@ private fun Routing.singlePageApplicationRoutes(
         // In development mode, serve files from file system for hot-reload
         // In production, serve from JAR resources
         if (webappConfig.useFileSystemAssets) {
-            filesPath = "src/main/resources/public"
+            // Path must include module name for multi-module projects
+            filesPath = "main-app/src/main/resources/public"
         } else {
             useResources = true
             filesPath = "public"
@@ -648,9 +616,11 @@ private fun Routing.singlePageApplicationRoutes(
  * - GET /api/html_webresponse_demo: demonstrates custom HTML response with layout
  * - GET /api/html_webresponse_nolayout_demo: demonstrates HTML response without layout
  *
+ * @param webappConfig The application configuration.
  * @param dataSource The JDBC datasource for DB-backed endpoints.
  */
 private fun Routing.helloWorldApiRoutes(
+    webappConfig: WebappConfig,
     dataSource: DataSource
 ) {
     get("/api", webResponse {
@@ -695,7 +665,7 @@ private fun Routing.helloWorldApiRoutes(
     })
 
     get("/api/coroutine_demo", webResponseDb(dataSource) { dbSession ->
-        handleCoroutineDemo(dbSession)
+        handleCoroutineDemo(webappConfig, dbSession)
     })
 
     get("/api/html_demo") {
@@ -857,24 +827,27 @@ private fun handleDatabaseException(exception: Throwable): ValidationError {
  * Demonstrates coroutine usage by making async HTTP requests to the third-party service
  * and performing a blocking DB query in the IO dispatcher.
  *
+ * @param config Application configuration containing the third-party service URL.
  * @param dbSession The database session for DB queries.
  * @return [TextWebResponse] with results of all async operations.
  */
-suspend fun handleCoroutineDemo(dbSession: Session) =
+suspend fun handleCoroutineDemo(config: WebappConfig, dbSession: Session) =
     coroutineScope {
         val client = HttpClient(CIO)
+        val baseUrl = config.thirdPartyServiceUrl
+
         val randomNumberRequest = async {
-            client.get("http://localhost:9876/random_number").bodyAsText()
+            client.get("$baseUrl/random_number").bodyAsText()
         }
 
         val reverseRequest = async {
-            client.post("http://localhost:9876/reverse") {
+            client.post("$baseUrl/reverse") {
                 setBody(randomNumberRequest.await())
             }.bodyAsText()
         }
 
         val queryOperation = async {
-            val pingPong = client.get("http://localhost:9876/ping").bodyAsText()
+            val pingPong = client.get("$baseUrl/ping").bodyAsText()
 
             // Perform blocking DB operation in IO dispatcher (Kotliquery uses blocking JDBC calls)
             withContext(Dispatchers.IO) {
@@ -966,6 +939,7 @@ fun createAppConfig(env: String) =
                 cookieEncryptionKey = it.getString("cookieEncryptionKey"),
                 cookieSigningKey = it.getString("cookieSigningKey"),
                 corsAllowedHosts = it.getStringListOrCommaSeparated("cors.allowedHosts"),
-                corsAllowedHttpsHosts = it.getStringListOrCommaSeparated("cors.allowedHttpsHosts")
+                corsAllowedHttpsHosts = it.getStringListOrCommaSeparated("cors.allowedHttpsHosts"),
+                thirdPartyServiceUrl = it.getString("thirdPartyServiceUrl")
             )
         }

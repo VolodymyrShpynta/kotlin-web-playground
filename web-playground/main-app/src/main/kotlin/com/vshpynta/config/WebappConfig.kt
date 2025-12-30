@@ -17,6 +17,7 @@ package com.vshpynta.config
  * @property cookieSigningKey Key for signing session cookies.
  * @property corsAllowedHosts List of allowed hosts for CORS (format: "host:port" or just "host").
  * @property corsAllowedHttpsHosts List of allowed HTTPS-only hosts for CORS.
+ * @property thirdPartyServiceUrl Base URL for the third-party demo service (for async HTTP call demonstrations).
  */
 data class WebappConfig(
     val httpPort: Int,
@@ -29,5 +30,6 @@ data class WebappConfig(
     val cookieEncryptionKey: String,
     val cookieSigningKey: String,
     val corsAllowedHosts: List<String>,
-    val corsAllowedHttpsHosts: List<String>
+    val corsAllowedHttpsHosts: List<String>,
+    val thirdPartyServiceUrl: String
 )

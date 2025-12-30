@@ -1,14 +1,5 @@
-// Central plugin version declarations. The Kotlin plugin version set here propagates to build.gradle.kts
-pluginManagement {
-    plugins {
-        // Kotlin JVM plugin version. Bump here to upgrade Kotlin (e.g., "2.3.0" when released)
-        kotlin("jvm") version "2.2.20"
-        // Kotlin Serialization plugin version (should match Kotlin version)
-        kotlin("plugin.serialization") version "2.2.20"
-        // Shadow plugin for creating fat/uber JARs with all dependencies included
-        id("com.github.johnrengelman.shadow") version "8.1.1"
-    }
-}
+// Plugin versions are now managed by version catalog (gradle/libs.versions.toml)
+// This provides type-safe plugin accessors via alias(libs.plugins.*)
 
 plugins {
     // Foojay resolver plugin lets Gradle auto-provision JDKs declared via jvmToolchain()
@@ -17,3 +8,7 @@ plugins {
 
 // Root project name (affects distribution folder names & generated scripts)
 rootProject.name = "web-playground"
+
+// Include submodules
+include("main-app")
+include("third-party-service")

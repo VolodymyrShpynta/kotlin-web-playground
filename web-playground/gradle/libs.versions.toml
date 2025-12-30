@@ -1,0 +1,68 @@
+[versions]
+ktor = "3.3.2"
+logback = "1.5.20"
+slf4j = "2.0.17"
+typesafe-config = "1.4.3"
+gson = "2.13.2"
+hikaricp = "7.0.2"
+flyway = "11.16.0"
+h2 = "2.4.240"
+kotliquery = "1.9.1"
+bcrypt = "0.10.2"
+arrow = "2.2.0"
+kotlinx-coroutines = "1.10.2"
+assertj = "3.27.6"
+
+[libraries]
+# Ktor BOM
+ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
+
+# Ktor server (versions are managed by the BOM)
+ktor-server-core = { module = "io.ktor:ktor-server-core-jvm" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages" }
+ktor-server-html-builder = { module = "io.ktor:ktor-server-html-builder" }
+ktor-server-auth = { module = "io.ktor:ktor-server-auth" }
+ktor-server-sessions = { module = "io.ktor:ktor-server-sessions" }
+ktor-server-cors = { module = "io.ktor:ktor-server-cors-jvm" }
+ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt-jvm" }
+
+# Ktor client (versions are managed by the BOM)
+ktor-client-core = { module = "io.ktor:ktor-client-core" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio" }
+
+# Ktor testing (versions are managed by the BOM)
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host-jvm" }
+
+# Logging
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# Configuration
+typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
+
+# JSON
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+
+# Database
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+h2-database = { module = "com.h2database:h2", version.ref = "h2" }
+kotliquery = { module = "com.github.seratch:kotliquery", version.ref = "kotliquery" }
+
+# Security
+bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
+
+# Functional programming
+arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
+arrow-fx-stm = { module = "io.arrow-kt:arrow-fx-stm", version.ref = "arrow" }
+
+# Testing
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.2.20" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "2.2.20" }
+shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
+

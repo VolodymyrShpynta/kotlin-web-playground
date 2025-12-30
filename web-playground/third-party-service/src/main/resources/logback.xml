@@ -1,0 +1,19 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+    <!-- Set Ktor logging to INFO to reduce noise -->
+    <logger name="io.ktor" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+
+    <!-- Third-party service logging -->
+    <logger name="com.vshpynta.thirdparty" level="DEBUG"/>
+</configuration>
+

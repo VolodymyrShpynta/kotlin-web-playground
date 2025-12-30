@@ -1,14 +1,27 @@
 # Azure Deployment Guide
 
-This guide walks you through deploying the Kotlin Web Playground application to **Azure Container Apps** using Azure
-Container Registry (ACR).
+This guide walks you through deploying the Kotlin Web Playground application to **Azure Container Apps** using Azure Container Registry (ACR).
+
+## Multi-Module Architecture Note
+
+This project uses a multi-module structure:
+- **main-app**: Main web application - primary service with all business logic
+- **third-party-service**: Demo service - demonstrates async HTTP calls and microservices communication
+
+**Deployment Options:**
+1. **Single Service**: Deploy only main-app (simplest, for testing)
+2. **Microservices**: Deploy both services (demonstrates microservices architecture with inter-service communication)
+
+This guide covers **both deployment scenarios**.
 
 ## Prerequisites
 
 - **Azure Account**: [Create a free account](https://azure.microsoft.com/free/)
 - **Azure CLI**: [Install Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)
 - **Docker**: Already installed for local development
-- **Built Docker Image**: `docker build -f Dockerfile -t web-playground:latest .`
+- **Built Docker Image**: 
+  - Option 1 (Recommended): `.\build-docker.ps1` - builds both modules
+  - Option 2: `docker build -f main-app/Dockerfile -t main-app:latest ./main-app` - builds main-app only
 
 ## Configuration Variables
 
@@ -32,6 +45,7 @@ $acrName = "vshpyntawebplaygroundacr"  # Change this to YOUR unique name
 # Azure Container Apps
 $envName = "web-playground-env"
 $appName = "web-playground-app"
+$thirdPartyAppName = "third-party-service-app"  # For microservices deployment
 
 # Application Secrets (from the .env file)
 $cookieEncryptionKey = "1d13f63b868ad26c46151245e1b5175c"
@@ -40,7 +54,7 @@ $cookieSigningKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9
 # CORS Configuration
 # Format: comma-separated list of hosts (simpler format)
 # For multiple hosts: $corsAllowedHttpsHosts = "host1.com,host2.com,host3.com"
-$corsAllowedHttpsHosts = "web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io"
+$corsAllowedHttpsHosts = "web-playground-app.orangemushroom-daf89c2d.northeurope.azurecontainerapps.io"
 
 # Optional: Database Configuration (for PostgreSQL setup)
 $dbServerName = "web-playground-db"
@@ -68,6 +82,7 @@ Write-Host "Location: $location" -ForegroundColor Yellow
 - [Step 4: Deploy to Azure Container Apps](#step-4-deploy-to-azure-container-apps)
 - [Step 5: Configure Environment Variables](#step-5-configure-environment-variables)
 - [Step 6: Get Application URL](#step-6-get-application-url)
+- [Step 7: Deploy Third-Party Service (Microservices Architecture)](#step-7-deploy-third-party-service-microservices-architecture)
 - [Complete Deployment Script](#complete-deployment-script-powershell)
 - [Update Existing Deployment](#update-existing-deployment)
 - [Azure Container Apps Features](#azure-container-apps-features)
@@ -178,23 +193,27 @@ docker login "$acrName.azurecr.io"
 ### Build Docker Image (if not already built)
 
 ```powershell
-# Build the JAR
-gradlew.bat clean build shadowJar
+# Option 1: Use automated build script (builds both modules)
+.\build-docker.ps1
 
-# Build Docker image
-docker build -f Dockerfile -t web-playground:latest .
+# Option 2: Build main-app module manually
+# Build the JAR
+.\gradlew.bat clean :main-app:shadowJar
+
+# Build Docker image for main-app
+docker build -f main-app/Dockerfile -t main-app:latest ./main-app
 ```
 
 ### Tag Image for ACR
 
 ```powershell
-docker tag web-playground:latest "$acrName.azurecr.io/web-playground:latest"
+docker tag main-app:latest "$acrName.azurecr.io/main-app:latest"
 ```
 
 ### Push Image to ACR
 
 ```powershell
-docker push "$acrName.azurecr.io/web-playground:latest"
+docker push "$acrName.azurecr.io/main-app:latest"
 ```
 
 The first push will take a few minutes as it uploads all layers. Subsequent pushes are incremental and much faster.
@@ -206,7 +225,7 @@ The first push will take a few minutes as it uploads all layers. Subsequent push
 az acr repository list --name $acrName --output table
 
 # List tags for specific repository
-az acr repository show-tags --name $acrName --repository web-playground --output table
+az acr repository show-tags --name $acrName --repository main-app --output table
 ```
 
 ## Step 4: Deploy to Azure Container Apps
@@ -230,7 +249,7 @@ This creates a managed environment for your container apps. Takes about 2-3 minu
 ### Deploy the Application
 
 ```powershell
-az containerapp create --name $appName --resource-group $resourceGroup --environment $envName --image "$acrName.azurecr.io/web-playground:latest" --target-port 4207 --ingress external --registry-server "$acrName.azurecr.io" --registry-username $acrName --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
+az containerapp create --name $appName --resource-group $resourceGroup --environment $envName --image "$acrName.azurecr.io/main-app:latest" --target-port 4207 --ingress external --registry-server "$acrName.azurecr.io" --registry-username $acrName --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
 ```
 
 **Parameters explained**:
@@ -255,10 +274,12 @@ az containerapp secret set --name $appName --resource-group $resourceGroup --sec
 ### Update Environment Variables
 
 ```powershell
-az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts
+az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_ENV=prod WEB_PLAYGROUND_HTTP_PORT=4207 WEB_PLAYGROUND_DB_USER= WEB_PLAYGROUND_DB_PASSWORD= WEB_PLAYGROUND_DB_URL="jdbc:h2:./build/prod;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;" WEB_PLAYGROUND_USE_SECURE_COOKIE=true WEB_PLAYGROUND_COOKIE_ENCRYPTION_KEY=secretref:cookie-encryption-key WEB_PLAYGROUND_COOKIE_SIGNING_KEY=secretref:cookie-signing-key WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts THIRD_PARTY_SERVICE_URL="http://localhost:9876"
 ```
 
-**Note**: `secretref:cookie-encryption-key` references the secret created in the previous step.
+**Notes**: 
+- `secretref:cookie-encryption-key` references the secret created in the previous step
+- `THIRD_PARTY_SERVICE_URL="http://localhost:9876"` is a placeholder - update this in Step 7 after deploying the third-party service, or leave it if you don't plan to deploy the third-party service
 
 ### Verify Environment Variables
 
@@ -297,6 +318,151 @@ Or open in browser:
 
 - `https://<your-app-url>`
 - `https://<your-app-url>/api`
+
+## Step 7: Deploy Third-Party Service (Microservices Architecture)
+
+This optional step demonstrates deploying a second service to showcase microservices architecture with inter-service communication.
+
+> **Note**: This section uses variables from the [Configuration Variables](#configuration-variables) section.
+
+### Build and Push Third-Party Service Image
+
+```powershell
+# 1. Build the JAR
+.\gradlew.bat clean :third-party-service:shadowJar
+
+# 2. Build Docker image
+docker build -f third-party-service/Dockerfile -t third-party-service:latest ./third-party-service
+
+# 3. Tag for ACR
+docker tag third-party-service:latest "$acrName.azurecr.io/third-party-service:latest"
+
+# 4. Push to ACR
+docker push "$acrName.azurecr.io/third-party-service:latest"
+```
+
+### Deploy Third-Party Service
+
+```powershell
+# Deploy to the same Container Apps environment
+az containerapp create `
+  --name $thirdPartyAppName `
+  --resource-group $resourceGroup `
+  --environment $envName `
+  --image "$acrName.azurecr.io/third-party-service:latest" `
+  --target-port 9876 `
+  --ingress external `
+  --registry-server "$acrName.azurecr.io" `
+  --registry-username $acrName `
+  --registry-password $acrPassword `
+  --cpu 0.25 `
+  --memory 0.5Gi
+```
+
+**Note:** Using smaller resources (0.25 vCPU, 0.5 GB) as this is a lightweight demo service.
+
+### Get Third-Party Service URL
+
+```powershell
+$thirdPartyUrl = az containerapp show --name $thirdPartyAppName --resource-group $resourceGroup --query properties.configuration.ingress.fqdn -o tsv
+Write-Host "Third-Party Service URL: https://$thirdPartyUrl" -ForegroundColor Green
+```
+
+### Test Third-Party Service
+
+```powershell
+# Test the demo endpoints
+curl "https://$thirdPartyUrl/ping"
+curl "https://$thirdPartyUrl/random_number"
+
+# Test reverse endpoint (POST)
+curl -X POST "https://$thirdPartyUrl/reverse" -H "Content-Type: text/plain" -d "Hello Azure"
+```
+
+### Configure Main App to Use Third-Party Service
+
+Update main-app to use the Azure-hosted third-party service:
+
+```powershell
+# Update environment variable with third-party service URL
+az containerapp update `
+  --name $appName `
+  --resource-group $resourceGroup `
+  --set-env-vars THIRD_PARTY_SERVICE_URL="https://$thirdPartyUrl"
+```
+
+**Verify the update was applied:**
+
+```powershell
+# Check that THIRD_PARTY_SERVICE_URL is set correctly
+az containerapp show --name $appName --resource-group $resourceGroup --query "properties.template.containers[0].env[?name=='THIRD_PARTY_SERVICE_URL'].value" -o tsv
+```
+
+The output should show: `https://<your-third-party-service-url>`
+
+**Wait for the new revision to be ready (~30-60 seconds):**
+
+```powershell
+# Check revision status
+az containerapp revision list --name $appName --resource-group $resourceGroup --output table
+```
+
+Look for the latest revision with `Running` status.
+
+### Test Inter-Service Communication
+
+```powershell
+# Test that main-app can call third-party-service
+curl "https://$appUrl/api/coroutine_demo"
+```
+
+**Expected response:** The main-app will make HTTP calls to the third-party-service and return aggregated results.
+
+### Microservices Architecture Benefits
+
+With both services deployed, you now have:
+
+✅ **Service Discovery**: Services communicate via Azure-provided URLs  
+✅ **Independent Scaling**: Each service scales based on its own load  
+✅ **Independent Deployment**: Update one service without affecting the other  
+✅ **Resource Optimization**: Assign resources based on each service's needs  
+✅ **Zero Trust Network**: Built-in TLS for inter-service communication  
+
+### Internal Communication (Advanced)
+
+For production microservices, you can configure **internal ingress** (service-to-service communication without exposing to internet):
+
+```powershell
+# Update third-party-service to internal ingress only
+az containerapp ingress update `
+  --name $thirdPartyAppName `
+  --resource-group $resourceGroup `
+  --type internal
+```
+
+When using internal ingress:
+- Service is NOT accessible from internet
+- Still accessible from other services in the same environment
+- URL changes to internal format: `http://third-party-service-app.internal.<environment-id>.azurecontainerapps.io`
+
+Update main-app configuration:
+
+```powershell
+# Get internal URL
+$internalUrl = az containerapp show --name $thirdPartyAppName --resource-group $resourceGroup --query properties.configuration.ingress.fqdn -o tsv
+
+# Update main-app
+az containerapp update `
+  --name $appName `
+  --resource-group $resourceGroup `
+  --set-env-vars THIRD_PARTY_SERVICE_URL="http://$internalUrl"
+```
+
+**Benefits of internal ingress:**
+- ✅ Enhanced security (service not exposed to internet)
+- ✅ Lower latency (same Azure network)
+- ✅ No egress charges for internal traffic
+- ✅ Simplified network topology
 
 ## Complete Deployment Script (PowerShell)
 
@@ -340,8 +506,8 @@ az acr login --name $acrName
 
 # 5. Tag and push Docker image
 Write-Host "Step 5: Tagging and pushing Docker image..." -ForegroundColor Green
-docker tag web-playground:latest "$acrName.azurecr.io/web-playground:latest"
-docker push "$acrName.azurecr.io/web-playground:latest"
+docker tag main-app:latest "$acrName.azurecr.io/main-app:latest"
+docker push "$acrName.azurecr.io/main-app:latest"
 
 # 6. Verify image
 Write-Host "Step 6: Verifying image in ACR..." -ForegroundColor Green
@@ -357,7 +523,7 @@ az containerapp env create --name $envName --resource-group $resourceGroup --loc
 
 # 9. Deploy application
 Write-Host "Step 9: Deploying application to Azure Container Apps..." -ForegroundColor Green
-az containerapp create --name $appName --resource-group $resourceGroup --environment $envName --image "$acrName.azurecr.io/web-playground:latest" --target-port 4207 --ingress external --registry-server "$acrName.azurecr.io" --registry-username $acrName --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
+az containerapp create --name $appName --resource-group $resourceGroup --environment $envName --image "$acrName.azurecr.io/main-app:latest" --target-port 4207 --ingress external --registry-server "$acrName.azurecr.io" --registry-username $acrName --registry-password $acrPassword --cpu 0.5 --memory 1.0Gi
 
 # 10. Set secrets
 Write-Host "Step 10: Setting secrets..." -ForegroundColor Green
@@ -383,19 +549,19 @@ When you make changes to your application and want to deploy a new version:
 
 ```powershell
 # 1. Rebuild JAR (if code changed)
-gradlew.bat clean build shadowJar
+.\gradlew.bat clean :main-app:shadowJar
 
-# 2. Rebuild Docker image
-docker build -f Dockerfile -t web-playground:latest .
+# 2. Rebuild Docker image for main-app
+docker build -f main-app/Dockerfile -t main-app:latest ./main-app
 
 # 3. Tag with ACR registry
-docker tag web-playground:latest "$acrName.azurecr.io/web-playground:latest"
+docker tag main-app:latest "$acrName.azurecr.io/main-app:latest"
 
 # 4. Push to ACR
-docker push "$acrName.azurecr.io/web-playground:latest"
+docker push "$acrName.azurecr.io/main-app:latest"
 
 # 5. Update Container App (triggers new revision with zero-downtime deployment)
-az containerapp update --name $appName --resource-group $resourceGroup --image "$acrName.azurecr.io/web-playground:latest"
+az containerapp update --name $appName --resource-group $resourceGroup --image "$acrName.azurecr.io/main-app:latest"
 ```
 
 ### Update Only Configuration
@@ -513,6 +679,48 @@ az containerapp show --name $appName --resource-group $resourceGroup --query pro
 | **Application shows 502 error**       | Check target port matches your app: `--target-port 4207`                                                                                  |
 | **Database connection fails**         | Verify `WEB_PLAYGROUND_DB_URL` environment variable is set correctly                                                                      |
 | **Secrets not working**               | Ensure you use `secretref:secret-name` format in environment variables                                                                    |
+| **/api/coroutine_demo missing data**  | Check `THIRD_PARTY_SERVICE_URL` is set correctly (see below for fix)                                                                      |
+
+### Troubleshooting: /api/coroutine_demo Returns Incomplete Data
+
+**Problem:** The `/api/coroutine_demo` endpoint doesn't return "Reversed:" data or shows connection errors.
+
+**Root Cause:** The `THIRD_PARTY_SERVICE_URL` environment variable is not set or points to the wrong URL.
+
+**Solution:**
+
+1. **Check current value:**
+   ```powershell
+   az containerapp show --name $appName --resource-group $resourceGroup --query "properties.template.containers[0].env[?name=='THIRD_PARTY_SERVICE_URL'].value" -o tsv
+   ```
+
+2. **If it shows `http://localhost:9876` or is empty, update it:**
+   ```powershell
+   # Get your third-party service URL
+   $thirdPartyUrl = az containerapp show --name $thirdPartyAppName --resource-group $resourceGroup --query properties.configuration.ingress.fqdn -o tsv
+   
+   # Update main-app with correct URL
+   az containerapp update `
+     --name $appName `
+     --resource-group $resourceGroup `
+     --set-env-vars THIRD_PARTY_SERVICE_URL="https://$thirdPartyUrl"
+   ```
+
+3. **Wait for new revision (~30-60 seconds):**
+   ```powershell
+   az containerapp revision list --name $appName --resource-group $resourceGroup --output table
+   ```
+
+4. **Test again:**
+   ```powershell
+   curl "https://$appUrl/api/coroutine_demo"
+   ```
+
+**Expected response should include:**
+- `Random number: XXX`
+- `Reversed: XXX` ← This line should now appear
+- `Ping/pong: pong`
+- `User count: X`
 
 ### Debug Commands
 
@@ -689,7 +897,7 @@ You can add or update CORS allowed hosts dynamically without rebuilding/redeploy
 ```powershell
 # Update CORS configuration (HTTPS-only hosts for production)
 # Use comma-separated format for multiple hosts
-$corsAllowedHttpsHosts = "web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io,app.yourdomain.com,newdomain.com"
+$corsAllowedHttpsHosts = "web-playground-app.orangemushroom-daf89c2d.northeurope.azurecontainerapps.io,app.yourdomain.com,newdomain.com"
 
 az containerapp update --name $appName --resource-group $resourceGroup --set-env-vars WEB_PLAYGROUND_CORS_ALLOWED_HTTPS_HOSTS=$corsAllowedHttpsHosts
 ```

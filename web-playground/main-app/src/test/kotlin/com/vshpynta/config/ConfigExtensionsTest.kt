@@ -271,7 +271,7 @@ class ConfigExtensionsTest {
             """
             cors {
               allowedHosts = []
-              allowedHttpsHosts = ["web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io", "app.mycompany.com"]
+              allowedHttpsHosts = ["web-playground-app.orangemushroom-daf89c2d.northeurope.azurecontainerapps.io", "app.mycompany.com"]
             }
             """.trimIndent()
         )
@@ -284,7 +284,7 @@ class ConfigExtensionsTest {
         assertTrue(httpHosts.isEmpty())
         assertEquals(
             listOf(
-                "web-playground-app.ashypebble-e19f1304.northeurope.azurecontainerapps.io",
+                "web-playground-app.orangemushroom-daf89c2d.northeurope.azurecontainerapps.io",
                 "app.mycompany.com"
             ),
             httpsHosts
