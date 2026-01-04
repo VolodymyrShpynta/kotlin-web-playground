@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: Kotlin Web Playground API
+  description: |
+    A production-ready Kotlin/Ktor web application with:
+    - Cookie-based and JWT authentication
+    - Database operations with Flyway migrations
+    - Health checks and Prometheus metrics
+    - Rate limiting
+  version: 1.0.0
+  contact:
+    name: API Support
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:4207
+    description: Local development server
+  - url: https://web-playground-app.azurecontainerapps.io
+    description: Production server (Azure)
+
+tags:
+  - name: Health & Monitoring
+    description: Health checks and metrics endpoints
+  - name: Demo
+    description: Demo endpoints showcasing features
+  - name: Users
+    description: User management operations
+  - name: Authentication
+    description: Login and authentication operations
+
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: Health Check
+      description: Returns the health status of the application and database
+      responses:
+        '200':
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheckResponse'
+        '503':
+          description: Application is unhealthy
+
+  /api/metrics:
+    get:
+      tags:
+        - Health & Monitoring
+      summary: Prometheus Metrics
+      description: Returns Prometheus-format metrics for monitoring
+      responses:
+        '200':
+          description: Metrics data
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api:
+    get:
+      tags:
+        - Demo
+      summary: Hello World
+      description: Simple hello world endpoint
+      responses:
+        '200':
+          description: Success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: Hello, World!
+
+  /api/users:
+    get:
+      tags:
+        - Users
+      summary: List All Users
+      description: Returns a list of all users (authentication required)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicUser'
+        '401':
+          description: Unauthorized
+
+  /api/users/{id}:
+    get:
+      tags:
+        - Users
+      summary: Get User by ID
+      description: Returns a specific user by ID (authentication required)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUser'
+        '401':
+          description: Unauthorized
+        '404':
+          description: User not found
+
+  /api/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login (Cookie-based)
+      description: Authenticate and receive a session cookie
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              description: Session cookie
+              schema:
+                type: string
+        '401':
+          description: Invalid credentials
+
+  /api/jwt_login:
+    post:
+      tags:
+        - Authentication
+      summary: Login (JWT)
+      description: Authenticate and receive a JWT token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+        '401':
+          description: Invalid credentials
+
+  /api/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      description: Clear session cookie
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+
+  /api/create_user:
+    post:
+      tags:
+        - Users
+      summary: Create User
+      description: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '201':
+          description: User created
+        '400':
+          description: Invalid input
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: user_session
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthCheckResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [UP, DOWN]
+        timestamp:
+          type: string
+          format: date-time
+        checks:
+          type: object
+          properties:
+            application:
+              type: object
+              properties:
+                status:
+                  type: string
+            database:
+              type: object
+              properties:
+                status:
+                  type: string
+                message:
+                  type: string
+
+    PublicUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        createdAt:
+          type: string
+          format: date-time

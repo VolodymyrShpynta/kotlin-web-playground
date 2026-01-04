@@ -37,6 +37,8 @@ This playground application provides a production-ready foundation for building 
 - [Error Handling](#error-handling)
 - [Logging](#logging)
 - [Single Page Application (SPA) Support](#single-page-application-spa-support)
+- [Monitoring & Metrics](#monitoring--metrics)
+- [Rate Limiting](#rate-limiting)
 - [Dependency & Version Management](#dependency--version-management)
 - [JDK Toolchain](#jdk-toolchain)
 - [Future Enhancements](#future-enhancements)
@@ -407,6 +409,12 @@ WEB_PLAYGROUND_ENV=prod ./gradlew :main-app:run
 # Hello World
 curl http://localhost:4207/api
 
+# Health Check (no auth required)
+curl http://localhost:4207/api/health
+
+# Prometheus Metrics (no auth required)
+curl http://localhost:4207/api/metrics
+
 # Query parameter test
 curl "http://localhost:4207/api/param_test?foo=test123"
 
@@ -422,6 +430,132 @@ curl http://localhost:4207/api/db_test
 # Coroutine demo (async operations)
 curl http://localhost:4207/api/coroutine_demo
 ```
+
+**API Documentation:**
+
+Open your browser to view the interactive Swagger UI:
+
+```
+http://localhost:4207/swagger
+```
+
+Or download the OpenAPI specification:
+
+```bash
+curl http://localhost:4207/openapi
+```
+
+### OpenAPI/Swagger Implementation
+
+This project uses a **manually maintained OpenAPI 3.0 specification** with Swagger UI for interactive API documentation.
+This is the industry-standard approach for Ktor applications, as Ktor does not provide automatic OpenAPI generation like
+Spring Boot.
+
+#### Files Structure
+
+```
+main-app/src/main/resources/
+├── openapi/
+│   └── api-docs.yaml          # OpenAPI 3.0 specification (manually maintained)
+└── swagger/
+    └── index.html             # Swagger UI page (loads from CDN)
+```
+
+#### Available Endpoints
+
+| Endpoint           | Purpose                       | Format | Authentication |
+|--------------------|-------------------------------|--------|----------------|
+| `GET /api/health`  | Health check for K8s probes   | JSON   | None           |
+| `GET /api/metrics` | Prometheus metrics            | Text   | None           |
+| `GET /openapi`     | OpenAPI 3.0 specification     | YAML   | None           |
+| `GET /swagger`     | Interactive API documentation | HTML   | None           |
+
+#### Updating API Documentation
+
+When you add or modify endpoints:
+
+1. **Implement the endpoint** in Ktor code
+2. **Update the OpenAPI spec** in `main-app/src/main/resources/openapi/api-docs.yaml`:
+    - Add the path and HTTP method
+    - Define request parameters/body schemas
+    - Define response schemas and status codes
+    - Specify security requirements (if authenticated)
+3. **Test in Swagger UI** - refresh http://localhost:4207/swagger to see changes
+
+#### OpenAPI Specification Format
+
+The `api-docs.yaml` follows OpenAPI 3.0 specification:
+
+```yaml
+openapi: 3.0.0
+info:
+  title: Web Playground API
+  version: 1.0.0
+  description: API documentation for the Web Playground application
+
+paths:
+  /api/users/{id}:
+    get:
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+```
+
+#### Why Manual OpenAPI?
+
+**Ktor Philosophy:** Ktor is a micro-framework that intentionally stays lightweight and unopinionated. Unlike Spring
+Boot (Springdoc) or FastAPI, Ktor does not provide automatic OpenAPI generation. This is by design.
+
+**Benefits:**
+
+- ✅ **Full Control** - You decide exactly what's documented
+- ✅ **Reliability** - No dependency on unstable auto-generation libraries
+- ✅ **Simplicity** - Clean, maintainable code
+- ✅ **Professional** - Industry-standard approach for Ktor applications
+- ✅ **Flexibility** - Document complex authentication flows, custom headers, etc.
+
+**How Production Ktor Projects Handle This:**
+
+- JetBrains (Ktor creators) use manual OpenAPI specs
+- Enterprise Ktor projects follow this approach
+- Ktor documentation recommends this pattern
+
+#### Swagger UI Features
+
+The Swagger UI at `/swagger` provides:
+
+- **Interactive Testing** - Try out API endpoints directly from the browser
+- **Request Builder** - Automatically builds requests with proper format
+- **Response Viewer** - View actual API responses
+- **Schema Validation** - Validates requests against the OpenAPI spec
+- **Authentication Support** - Works with both Cookie and JWT authentication
+- **Deep Linking** - Share links to specific endpoints
 
 **Using IntelliJ IDEA HTTP Client:**
 
@@ -1284,6 +1418,32 @@ either {
 }
 ```
 
+### JSON Serialization Security
+
+**Important:** The application uses Gson with `excludeFieldsWithoutExposeAnnotation()` for security. This means:
+
+- **Only fields with `@Expose` annotation are serialized to JSON**
+- This prevents accidental exposure of sensitive data (e.g., password hashes)
+- All DTO/response classes must have `@Expose` on fields you want in JSON
+
+Example:
+
+```kotlin
+data class PublicUser(
+    @Expose val id: Long,
+    @Expose val email: String,
+    @Expose val name: String?
+    // passwordHash field without @Expose will NOT be serialized
+)
+```
+
+**Why this matters:**
+- Prevents accidentally leaking sensitive internal fields
+- Forces explicit declaration of what's public in your API
+- Common security best practice for production applications
+
+If you see `{}` in JSON responses, check that your data classes have `@Expose` annotations!
+
 ## Logging
 
 The application uses **Logback** for logging (configured in `logback.xml`).
@@ -1396,18 +1556,460 @@ configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
 
 Ensure your IDE's Gradle JVM setting matches the toolchain version.
 
+## Monitoring & Metrics
+
+The application includes comprehensive monitoring and observability features using **Micrometer** with **Prometheus**
+metrics export.
+
+### Instrumentation Endpoints
+
+All monitoring endpoints are publicly accessible (no authentication required) as they're typically used by
+infrastructure:
+
+| Endpoint           | Purpose                                               | Format                   |
+|--------------------|-------------------------------------------------------|--------------------------|
+| `GET /api/health`  | Health check for Kubernetes liveness/readiness probes | JSON                     |
+| `GET /api/metrics` | Prometheus metrics for monitoring dashboards          | Text (Prometheus format) |
+
+### Health Check
+
+```bash
+curl http://localhost:4207/api/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "UP",
+  "timestamp": "2026-01-04T...",
+  "checks": {
+    "application": {
+      "status": "UP"
+    },
+    "database": {
+      "status": "UP",
+      "message": "Database is reachable"
+    }
+  }
+}
+```
+
+### Prometheus Metrics
+
+```bash
+curl http://localhost:4207/api/metrics
+```
+
+**Available Metrics:**
+
+- **JVM Metrics**: Memory usage, GC stats, thread counts, class loader stats
+- **System Metrics**: CPU usage, processor count
+- **HTTP Metrics**: Request counts, duration, status codes
+- **Custom Metrics**: Add your own using Micrometer API
+
+**Example Output:**
+
+```
+# HELP jvm_memory_used_bytes Used memory
+# TYPE jvm_memory_used_bytes gauge
+jvm_memory_used_bytes{area="heap",id="G1 Eden Space"} 52428800.0
+...
+# HELP http_server_requests_seconds HTTP request duration
+# TYPE http_server_requests_seconds summary
+http_server_requests_seconds_count{method="GET",status="200",uri="/api/health"} 42.0
+http_server_requests_seconds_sum{method="GET",status="200",uri="/api/health"} 0.524
+...
+```
+
+### Micrometer Configuration
+
+The application uses **Micrometer with Prometheus registry**:
+
+```kotlin
+// Create Prometheus registry
+val appMicrometerRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+
+// Install MicrometerMetrics plugin
+install(MicrometerMetrics) {
+    registry = appMicrometerRegistry
+
+    // Automatic JVM and system metrics
+    meterBinders = listOf(
+        ClassLoaderMetrics(),
+        JvmMemoryMetrics(),
+        JvmGcMetrics(),
+        JvmThreadMetrics(),
+        ProcessorMetrics()
+    )
+}
+```
+
+**Dependencies:**
+
+- `io.ktor:ktor-server-metrics-micrometer` (from Ktor BOM)
+- `io.micrometer:micrometer-registry-prometheus:1.15.5` (matches Ktor BOM version)
+
+### Integrating with Monitoring Tools
+
+#### Prometheus
+
+Add to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'kotlin-web-playground'
+    scrape_interval: 15s
+    static_configs:
+      - targets: [ 'localhost:4207' ]
+    metrics_path: '/api/metrics'
+```
+
+#### Grafana
+
+1. Add Prometheus as a data source
+2. Import a JVM dashboard (e.g., Grafana dashboard #4701)
+3. Create custom dashboards for your application metrics
+
+#### Kubernetes
+
+Use the health endpoint for liveness/readiness probes:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 4207
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 4207
+  initialDelaySeconds: 10
+  periodSeconds: 5
+```
+
+### Adding Custom Metrics
+
+Use Micrometer's API to add custom metrics:
+
+```kotlin
+// Counter
+val requestCounter = registry.counter("api.requests", "endpoint", "/api/users")
+requestCounter.increment()
+
+// Gauge
+registry.gauge("active.connections", activeConnections)
+
+// Timer
+registry.timer("api.request.duration", "endpoint", "/api/users").record {
+    // Your operation here
+}
+
+// Distribution Summary
+registry.summary("response.size", "endpoint", "/api/users").record(responseSize.toDouble())
+```
+
+## Rate Limiting
+
+### Why Rate Limiting is NOT in Application Code
+
+This application **intentionally does not include** application-level rate limiting. Here's why:
+
+### ❌ Problems with Application-Level Rate Limiting
+
+**In-Memory Limitations:**
+- ❌ **Lost on restart** - Rate limit state disappears when pod restarts
+- ❌ **Not distributed** - Each pod has independent limits (user can bypass by hitting different pods)
+- ❌ **Memory leaks** - Unbounded growth with unique keys (IPs, user IDs)
+- ❌ **No persistence** - Can't track long-term abuse patterns
+
+**Architectural Issues:**
+```
+User makes 100 req/min → Pod 1 ✅ Allowed
+User makes 100 req/min → Pod 2 ✅ Allowed  
+User makes 100 req/min → Pod 3 ✅ Allowed
+Total: 300 req/min ❌ Limit bypassed!
+```
+
+### ✅ Recommended Approach: Infrastructure-Level Rate Limiting
+
+Rate limiting should be implemented **before requests reach your application** using infrastructure components.
+
+#### Option 1: API Gateway (Best for Production)
+
+**Kong Gateway:**
+```yaml
+plugins:
+  - name: rate-limiting
+    config:
+      minute: 100
+      hour: 5000
+      policy: redis  # Distributed across all gateway instances
+      redis:
+        host: redis.example.com
+        port: 6379
+```
+
+**NGINX Plus / NGINX Ingress:**
+```nginx
+# Define rate limit zone (10MB can track ~160k IPs)
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=100r/m;
+
+location /api {
+    # Apply rate limiting with burst allowance
+    limit_req zone=api_limit burst=20 nodelay;
+    
+    # Return 429 with custom message
+    limit_req_status 429;
+    
+    proxy_pass http://backend;
+}
+```
+
+**AWS API Gateway:**
+```yaml
+# serverless.yml or CloudFormation
+Resources:
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: web-playground-api
+      
+  UsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      Throttle:
+        BurstLimit: 200
+        RateLimit: 100
+```
+
+**Azure API Management:**
+```xml
+<policies>
+    <inbound>
+        <rate-limit calls="100" renewal-period="60" />
+        <quota calls="10000" renewal-period="86400" />
+    </inbound>
+</policies>
+```
+
+**Google Cloud Armor:**
+```yaml
+securityPolicy:
+  rateLimitOptions:
+    rateLimitThreshold:
+      count: 100
+      intervalSec: 60
+```
+
+#### Option 2: Load Balancer
+
+**HAProxy:**
+```haproxy
+frontend api
+    bind *:443
+    
+    # Track by source IP
+    stick-table type ip size 100k expire 1m store http_req_rate(60s)
+    
+    # Rate limit: 100 req/min
+    http-request track-sc0 src
+    http-request deny if { sc_http_req_rate(0) gt 100 }
+    
+    default_backend app_servers
+```
+
+**Traefik:**
+```yaml
+http:
+  middlewares:
+    rate-limit:
+      rateLimit:
+        average: 100
+        period: 1m
+        burst: 20
+```
+
+#### Option 3: CDN / DDoS Protection
+
+**Cloudflare Rate Limiting:**
+```
+Rules → Rate Limiting:
+  - If requests per minute > 100
+  - From same IP
+  - Then block for 1 hour
+```
+
+**Cloudflare Workers (Advanced):**
+```javascript
+export default {
+  async fetch(request, env) {
+    const ip = request.headers.get('CF-Connecting-IP');
+    const key = `rate_limit:${ip}`;
+    
+    const count = await env.KV.get(key);
+    if (count > 100) {
+      return new Response('Too Many Requests', { status: 429 });
+    }
+    
+    await env.KV.put(key, (count || 0) + 1, { expirationTtl: 60 });
+    return fetch(request);
+  }
+};
+```
+
+### Production Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│ Internet                                         │
+└───────────────────────┬──────────────────────────┘
+                        │
+                   ┌────▼──────┐
+                   │ Cloudflare│  1. DDoS protection
+                   │ / CDN     │  2. Bot detection
+                   └────┬──────┘  3. Global rate limiting
+                        │
+                   ┌────▼────────┐
+                   │ API Gateway │  1. Authentication
+                   │ (Kong/NGINX)│  2. Rate limiting (100/min/IP)
+                   └────┬────────┘  3. Request routing
+                        │
+              ┌─────────┼─────────┐
+              │         │         │
+         ┌────▼───┐ ┌───▼────┐ ┌─▼──────┐
+         │Pod 1   │ │Pod 2   │ │Pod 3   │  Application logic ONLY
+         │        │ │        │ │        │  No rate limiting here!
+         └────────┘ └────────┘ └────────┘
+```
+
+### When Application-Level Rate Limiting IS Appropriate
+
+Use application-level rate limiting (with Redis) ONLY for:
+
+✅ **Business logic limits:**
+```kotlin
+// Example: Premium users get higher API quotas
+class UserQuotaService(private val redis: RedisClient) {
+    fun checkQuota(userId: String, userTier: UserTier): Boolean {
+        val limit = when (userTier) {
+            UserTier.FREE -> 100
+            UserTier.PREMIUM -> 1000
+            UserTier.ENTERPRISE -> 10000
+        }
+        return redis.checkAndIncrement("quota:$userId", limit, 24.hours)
+    }
+}
+```
+
+✅ **Per-tenant limits in multi-tenant systems**
+✅ **API endpoint-specific limits** (e.g., expensive operations)
+✅ **Already behind API gateway** that handles basic DDoS
+
+### Redis-Based Distributed Rate Limiting (If Needed)
+
+If you **must** implement application-level rate limiting, use Redis:
+
+**Dependencies:**
+```kotlin
+// build.gradle.kts
+dependencies {
+    implementation("io.github.bucket4j:bucket4j-redis:8.5.0")
+    implementation("redis.clients:jedis:5.0.0")
+}
+```
+
+**Implementation:**
+```kotlin
+class RedisRateLimiter(private val redis: JedisPool) {
+    fun isAllowed(key: String, maxRequests: Int, window: Duration): Boolean {
+        val redisKey = "rate_limit:$key"
+        val now = Instant.now().toEpochMilli()
+        val windowStart = now - window.toMillis()
+
+        return redis.resource.use { conn ->
+            // Atomic operations in Redis
+            val pipe = conn.pipelined()
+            
+            // Remove old entries
+            pipe.zremrangeByScore(redisKey, 0.0, windowStart.toDouble())
+            
+            // Count current requests
+            val countResponse = pipe.zcard(redisKey)
+            
+            // Execute pipeline
+            pipe.sync()
+            
+            val count = countResponse.get()
+            
+            if (count < maxRequests) {
+                conn.zadd(redisKey, now.toDouble(), UUID.randomUUID().toString())
+                conn.expire(redisKey, window.seconds.toInt())
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+```
+
+**Using Bucket4j:**
+```kotlin
+val proxyManager = RedisProxyManager.builderFor(jedisPool).build()
+
+val bucket = proxyManager.builder().build(userId) {
+    Bandwidth.simple(100, Duration.ofMinutes(1))
+}
+
+if (bucket.tryConsume(1)) {
+    // Allow request
+} else {
+    // Reject with 429
+}
+```
+
+### Monitoring Rate Limiting
+
+**Prometheus Metrics (from API Gateway):**
+```
+rate_limit_exceeded_total{endpoint="/api/users"} 42
+rate_limit_allowed_total{endpoint="/api/users"} 9958
+```
+
+**Grafana Dashboard:**
+- Requests per second by endpoint
+- Rate limit rejections over time
+- Top rate-limited IPs/users
+
+### Key Takeaways
+
+✅ **DO:** Implement rate limiting at API Gateway/Load Balancer  
+✅ **DO:** Use CDN for DDoS protection  
+✅ **DO:** Use Redis for distributed application limits (if needed)  
+❌ **DON'T:** Use in-memory rate limiting in microservices  
+❌ **DON'T:** Implement in application code for basic protection  
+❌ **DON'T:** Trust client-side rate limiting  
+
+**Remember:** Rate limiting is **infrastructure concern**, not application logic concern.
+
 ## Future Enhancements
 
-- [ ] Health check endpoint (`GET /api/health`)
-- [ ] Code quality tools (Detekt / ktlint)
-- [x] ~~Gradle version catalog (`libs.versions.toml`)~~ - **Implemented!**
-- [x] ~~Config file (HOCON) and typed settings~~ - **Implemented!**
+- [x] ~~Health check endpoint (`GET /api/health`)~~ - **Implemented!** ✅
+- [x] ~~Code quality tools (Detekt / ktlint)~~ - **Implemented!** ✅
+- [x] ~~Gradle version catalog (`libs.versions.toml`)~~ - **Implemented!** ✅
+- [x] ~~Config file (HOCON) and typed settings~~ - **Implemented!** ✅
+- [x] ~~OpenAPI/Swagger documentation~~ - **Implemented!** ✅
+- [x] ~~Metrics and monitoring (Micrometer)~~ - **Implemented!** ✅
+- [ ] Rate limiting (API Gateway level - see Rate Limiting section)
 - [ ] Docker image with multi-stage build
 - [ ] Database connection from connection string secret
 - [ ] Production-grade session storage (Redis, database)
-- [ ] Rate limiting middleware
-- [ ] OpenAPI/Swagger documentation
-- [ ] Metrics and monitoring (Micrometer)
+- [ ] Distributed tracing (OpenTelemetry)
+- [ ] Circuit breakers and resilience patterns
 
 ## Troubleshooting
 

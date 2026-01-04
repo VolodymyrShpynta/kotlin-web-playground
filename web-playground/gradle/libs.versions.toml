@@ -12,6 +12,8 @@ bcrypt = "0.10.2"
 arrow = "2.2.0"
 kotlinx-coroutines = "1.10.2"
 assertj = "3.27.6"
+micrometer = "1.15.5"
+detekt = "1.23.8"
 
 [libraries]
 # Ktor BOM
@@ -61,8 +63,13 @@ arrow-fx-stm = { module = "io.arrow-kt:arrow-fx-stm", version.ref = "arrow" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 
+# Metrics and monitoring
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }
+ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer" }
+
+
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.2.20" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "2.2.20" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
-
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

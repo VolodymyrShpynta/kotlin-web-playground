@@ -29,6 +29,7 @@ import com.vshpynta.config.getStringListOrCommaSeparated
 import com.vshpynta.db.mapFromRow
 import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
+import com.vshpynta.monitoring.handleHealthCheck
 import com.vshpynta.security.UserSession
 import com.vshpynta.service.authenticateUser
 import com.vshpynta.service.createUser
@@ -52,6 +53,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -68,6 +70,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.html.Template
 import io.ktor.server.html.respondHtmlTemplate
 import io.ktor.server.http.content.singlePageApplication
+import io.ktor.server.metrics.micrometer.MicrometerMetrics
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.statuspages.StatusPages
@@ -89,6 +92,13 @@ import io.ktor.server.sessions.maxAge
 import io.ktor.server.sessions.sessions
 import io.ktor.server.sessions.set
 import io.ktor.util.hex
+import io.micrometer.core.instrument.binder.jvm.ClassLoaderMetrics
+import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics
+import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics
+import io.micrometer.core.instrument.binder.jvm.JvmThreadMetrics
+import io.micrometer.core.instrument.binder.system.ProcessorMetrics
+import io.micrometer.prometheusmetrics.PrometheusConfig
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -181,6 +191,26 @@ fun Application.setUpKtorApplication(
     webappConfig: WebappConfig,
     dataSource: DataSource
 ) {
+
+    // Micrometer Metrics with Prometheus registry
+    // Create the registry first so we can reference it in the metrics endpoint
+    val appMicrometerRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
+
+    install(MicrometerMetrics) {
+        // Configure Prometheus registry for metrics export
+        registry = appMicrometerRegistry
+
+        // Register JVM and system metrics using meterBinders
+        // This is the recommended approach in Ktor 3.x - automatically binds metrics to the registry
+        meterBinders = listOf(
+            ClassLoaderMetrics(),
+            JvmMemoryMetrics(),
+            JvmGcMetrics(),
+            JvmThreadMetrics(),
+            ProcessorMetrics()
+        )
+    }
+
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             log.error("An unknown error occurred", cause)
@@ -224,9 +254,71 @@ fun Application.setUpKtorApplication(
     }
 
     routing {
+
+        // Instrumentation routes (health, metrics, API docs)
+        instrumentationRoutes(appMicrometerRegistry, dataSource)
+
+        // Application routes
         singlePageApplicationRoutes(webappConfig)
         helloWorldApiRoutes(webappConfig, dataSource)
         userApiRoutes(dataSource)
+    }
+}
+
+/**
+ * Sets up instrumentation and observability routes.
+ *
+ * This includes:
+ * - Health check endpoint for liveness/readiness probes
+ * - Prometheus metrics endpoint for monitoring
+ * - OpenAPI specification endpoint (manually maintained YAML)
+ * - Swagger UI endpoint (interactive API documentation)
+ *
+ * **OpenAPI/Swagger Implementation:**
+ * Ktor does not have official auto-generated OpenAPI support (unlike Spring Boot's Springdoc).
+ * This implementation follows the industry-standard approach for Ktor applications:
+ * - Manually maintain OpenAPI specification in `resources/openapi/api-docs.yaml`
+ * - Serve Swagger UI from static HTML in `resources/swagger/index.html`
+ * - Simple, maintainable, and fully under your control
+ *
+ * **Endpoints:**
+ * - GET /api/health - Health check (JSON format)
+ * - GET /api/metrics - Prometheus metrics (text format)
+ * - GET /openapi - OpenAPI 3.0 specification (YAML format)
+ * - GET /swagger - Interactive Swagger UI (HTML)
+ *
+ * All these endpoints are publicly accessible (no authentication required)
+ * as they are typically used by infrastructure and developers.
+ *
+ * @param micrometerRegistry The Prometheus registry for scraping metrics
+ * @param dataSource The datasource for health check queries
+ */
+fun Routing.instrumentationRoutes(
+    micrometerRegistry: PrometheusMeterRegistry,
+    dataSource: DataSource
+) {
+    // Health check endpoint for Kubernetes liveness/readiness probes
+    get("/api/health", webResponse {
+        handleHealthCheck(dataSource)
+    })
+
+    // Prometheus metrics endpoint for monitoring dashboards (Grafana, etc.)
+    get("/api/metrics") {
+        call.respondText(micrometerRegistry.scrape(), ContentType.Text.Plain)
+    }
+
+    // OpenAPI specification endpoint - serves the YAML file from resources
+    get("/openapi") {
+        val spec = javaClass.classLoader.getResource("openapi/api-docs.yaml")?.readText()
+            ?: throw IllegalStateException("OpenAPI specification not found at openapi/api-docs.yaml")
+        call.respondText(spec, ContentType.parse("text/yaml"))
+    }
+
+    // Swagger UI endpoint - serves static HTML from resources
+    get("/swagger") {
+        val html = javaClass.classLoader.getResource("swagger/index.html")?.readText()
+            ?: throw IllegalStateException("Swagger UI not found at swagger/index.html")
+        call.respondText(html, ContentType.Text.Html)
     }
 }
 

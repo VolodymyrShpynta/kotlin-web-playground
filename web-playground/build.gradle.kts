@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.shadow) apply false
+    alias(libs.plugins.detekt)
 }
 
 allprojects {
@@ -35,5 +36,20 @@ subprojects {
     dependencies {
         // Common dependencies for all modules
         add("implementation", kotlin("stdlib"))
+    }
+}
+
+// Detekt configuration for code quality checks
+detekt {
+    buildUponDefaultConfig = true
+    allRules = false
+    config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(false)
+        txt.required.set(false)
     }
 }

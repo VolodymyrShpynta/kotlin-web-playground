@@ -22,6 +22,11 @@ dependencies {
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth.jwt)
 
+    // Metrics and monitoring
+    implementation(libs.ktor.server.metrics.micrometer)
+    implementation(libs.micrometer.registry.prometheus)
+
+
     // Ktor testing modules
     testImplementation(libs.ktor.server.test.host)
 
