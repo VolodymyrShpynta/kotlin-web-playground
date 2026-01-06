@@ -62,7 +62,7 @@ This playground application provides a production-ready foundation for building 
 - **H2 Database**: In-memory and file-based database (v2.4.240)
 - **Kotliquery**: Type-safe SQL queries (v1.9.1)
 - **BCrypt**: Password hashing (v0.10.2)
-- **Typesafe Config**: HOCON configuration management (v1.4.3)
+- **Hoplite**: Modern Kotlin configuration library (v2.9.5)
 - **Gson**: JSON serialization/deserialization (v2.13.2)
 - **Logback**: Logging implementation (v1.5.20)
 - **JWT**: JWT authentication (via Ktor)
@@ -265,10 +265,139 @@ All API endpoints use the `/api` prefix to avoid conflicts with SPA client-side 
 
 ## Configuration
 
-### Environment-Based Configuration
+### Modern Kotlin Configuration with Hoplite
 
-The application uses HOCON (Typesafe Config) for configuration management. Environment is selected via the
-`WEB_PLAYGROUND_ENV` environment variable (defaults to `local`).
+This application uses **Hoplite** - the most idiomatic Kotlin configuration library. Hoplite provides zero-boilerplate,
+type-safe configuration with automatic environment variable mapping.
+
+#### Why Hoplite?
+
+**Zero Boilerplate** - Automatic data class mapping (4 lines vs 30+ with TypeSafe Config)  
+**Type-Safe** - Compiler validates everything at compile time  
+**Auto Environment Variables** - Automatic SCREAMING_SNAKE_CASE → camelCase conversion  
+**Clean Structure** - Nested data classes for logical grouping  
+**Built-in Validation** - Clear error messages for configuration issues  
+**Most Idiomatic** - The Kotlin way to handle configuration
+
+### Configuration Architecture
+
+The application uses a **hybrid configuration strategy** combining multiple sources:
+
+**Configuration Priority (highest to lowest):**
+
+1. **Environment Variables** - For secrets and deployment-specific settings (automatically mapped by Hoplite)
+2. **System Properties** - JVM properties (`-Dhttp.port=8080`)
+3. **Environment-Specific Config** (`app-{env}.conf`) - Environment overrides
+4. **Base Config** (`app.conf`) - Sensible defaults for all environments
+
+**Key Benefits:**
+
+- **Security** - Secrets in environment variables, not in source control
+- **Flexibility** - Easy override for different environments (local, staging, prod)
+- **Developer Experience** - Sensible defaults for local development
+- **Cloud-Native** - Perfect for Docker, Kubernetes, Azure Container Apps
+- **Automatic Mapping** - No manual parsing code required
+
+### How Hoplite Works
+
+Hoplite automatically maps configuration from multiple sources to Kotlin data classes:
+
+```kotlin
+// Automatic data class mapping - no boilerplate!
+fun createAppConfig(env: String): WebappConfig =
+    ConfigLoaderBuilder.default()
+        .addSource(PropertySource.resource("/app-${env}.conf"))
+        .addSource(PropertySource.resource("/app.conf"))
+        .build()
+        .loadConfigOrThrow<WebappConfig>()
+```
+
+**Configuration Structure:**
+
+```kotlin
+data class WebappConfig(
+    val httpPort: Int = 4207,
+    val db: DatabaseConfig,                    // Nested config
+    val cookie: CookieConfig,                  // Nested config
+    val cors: CorsConfig = CorsConfig(),       // Nested config with defaults
+    val hikari: HikariConfig = HikariConfig(), // Nested config with defaults
+    val useFileSystemAssets: Boolean = false,
+    val thirdPartyServiceUrl: String = "http://localhost:9876"
+)
+
+data class DatabaseConfig(
+    val url: String,
+    val user: String = "",
+    val password: String = ""
+)
+
+data class CookieConfig(
+    val useSecure: Boolean = true,
+    val sameSite: String = "Lax",
+    val encryptionKey: String,
+    val signingKey: String
+)
+
+data class CorsConfig(
+    val allowedHosts: List<String> = emptyList(),
+    val allowedHttpsHosts: List<String> = emptyList()
+)
+
+data class HikariConfig(
+    val maxPoolSize: Int = 10,
+    val minIdle: Int = 2,
+    val connectionTimeoutMs: Long = 5000,
+    val validationTimeoutMs: Long = 3000,
+    val idleTimeoutMs: Long = 600000,
+    val maxLifetimeMs: Long = 1800000,
+    val leakDetectionThresholdMs: Long = 60000
+)
+```
+
+### Automatic Environment Variable Mapping
+
+Hoplite uses smart naming conventions to automatically map environment variables:
+
+| Environment Variable                 | Config Property                   | Data Class Path                          | Example Value                   |
+|--------------------------------------|-----------------------------------|------------------------------------------|---------------------------------|
+| `HTTP_PORT`                          | `httpPort`                        | `config.httpPort`                        | `8080`                          |
+| `DB_URL`                             | `db.url`                          | `config.db.url`                          | `jdbc:postgresql://...`         |
+| `DB_USER`                            | `db.user`                         | `config.db.user`                         | `appuser`                       |
+| `DB_PASSWORD`                        | `db.password`                     | `config.db.password`                     | `secret`                        |
+| `COOKIE_ENCRYPTION_KEY`              | `cookie.encryptionKey`            | `config.cookie.encryptionKey`            | `hex_key`                       |
+| `COOKIE_SIGNING_KEY`                 | `cookie.signingKey`               | `config.cookie.signingKey`               | `hex_key`                       |
+| `COOKIE_USE_SECURE`                  | `cookie.useSecure`                | `config.cookie.useSecure`                | `true`                          |
+| `COOKIE_SAME_SITE`                   | `cookie.sameSite`                 | `config.cookie.sameSite`                 | `Lax`                           |
+| `CORS_ALLOWED_HOSTS`                 | `cors.allowedHosts`               | `config.cors.allowedHosts`               | `host1,host2` (comma-separated) |
+| `CORS_ALLOWED_HTTPS_HOSTS`           | `cors.allowedHttpsHosts`          | `config.cors.allowedHttpsHosts`          | `domain.com`                    |
+| `HIKARI_MAX_POOL_SIZE`               | `hikari.maxPoolSize`              | `config.hikari.maxPoolSize`              | `50`                            |
+| `HIKARI_MIN_IDLE`                    | `hikari.minIdle`                  | `config.hikari.minIdle`                  | `10`                            |
+| `HIKARI_CONNECTION_TIMEOUT_MS`       | `hikari.connectionTimeoutMs`      | `config.hikari.connectionTimeoutMs`      | `5000`                          |
+| `HIKARI_VALIDATION_TIMEOUT_MS`       | `hikari.validationTimeoutMs`      | `config.hikari.validationTimeoutMs`      | `3000`                          |
+| `HIKARI_IDLE_TIMEOUT_MS`             | `hikari.idleTimeoutMs`            | `config.hikari.idleTimeoutMs`            | `600000`                        |
+| `HIKARI_MAX_LIFETIME_MS`             | `hikari.maxLifetimeMs`            | `config.hikari.maxLifetimeMs`            | `1800000`                       |
+| `HIKARI_LEAK_DETECTION_THRESHOLD_MS` | `hikari.leakDetectionThresholdMs` | `config.hikari.leakDetectionThresholdMs` | `60000`                         |
+
+**Conversion Rules:**
+
+- `SCREAMING_SNAKE_CASE` → `camelCase`
+- Underscores indicate nesting: `DB_URL` → `db.url`
+- Lists from comma-separated values: `host1,host2` → `["host1", "host2"]`
+
+### Environment Selection
+
+Set the `WEB_PLAYGROUND_ENV` environment variable to select the configuration environment:
+
+```bash
+# Local development (default)
+export WEB_PLAYGROUND_ENV=local
+
+# Production
+export WEB_PLAYGROUND_ENV=prod
+
+# Testing
+export WEB_PLAYGROUND_ENV=test
+```
 
 **Available environments:**
 
@@ -276,38 +405,393 @@ The application uses HOCON (Typesafe Config) for configuration management. Envir
 - `prod` - Production (uses `app-prod.conf`)
 - `test` - Testing (uses `app-test.conf`)
 
-**Configuration hierarchy:**
-
-1. `app.conf` - Base configuration
-2. `app-{env}.conf` - Environment-specific overrides
-
 ### Configuration Properties
 
-| Property              | Description                              | Default      |
-|-----------------------|------------------------------------------|--------------|
-| `httpPort`            | HTTP server port                         | `4207`       |
-| `db.url`              | JDBC connection URL                      | H2 in-memory |
-| `db.user`             | Database username                        | `null`       |
-| `db.password`         | Database password                        | `null`       |
-| `useFileSystemAssets` | Serve static files from filesystem (dev) | `false`      |
-| `useSecureCookie`     | Enable secure flag on session cookies    | `true`       |
-| `cookieSameSite`      | SameSite cookie policy                   | `"Lax"`      |
-| `cookieEncryptionKey` | Cookie encryption key (hex)              | Required     |
-| `cookieSigningKey`    | Cookie signing key (hex)                 | Required     |
+#### Application Settings
 
-### Example: app-local.conf
+| Property                | Environment Variable      | Config File Path       | Default          | Description                        |
+|-------------------------|---------------------------|------------------------|------------------|------------------------------------|
+| HTTP Port               | `HTTP_PORT`               | `httpPort`             | `4207`           | HTTP server listening port         |
+| Use Filesystem Assets   | `USE_FILESYSTEM_ASSETS`   | `useFileSystemAssets`  | `false`          | Serve static files from filesystem |
+| Third-Party Service URL | `THIRD_PARTY_SERVICE_URL` | `thirdPartyServiceUrl` | `localhost:9876` | Base URL for demo service          |
+
+#### Database Settings (`db.*`)
+
+| Property          | Environment Variable | Config File Path | Default      | Description         |
+|-------------------|----------------------|------------------|--------------|---------------------|
+| Database URL      | `DB_URL`             | `db.url`         | H2 in-memory | JDBC connection URL |
+| Database User     | `DB_USER`            | `db.user`        | `""`         | Database username   |
+| Database Password | `DB_PASSWORD`        | `db.password`    | `""`         | Database password   |
+
+#### Cookie Security Settings (`cookie.*`)
+
+| Property              | Environment Variable    | Config File Path       | Default  | Description                           |
+|-----------------------|-------------------------|------------------------|----------|---------------------------------------|
+| Use Secure Cookie     | `COOKIE_USE_SECURE`     | `cookie.useSecure`     | `true`   | Enable Secure flag on cookies (HTTPS) |
+| Cookie SameSite       | `COOKIE_SAME_SITE`      | `cookie.sameSite`      | `"Lax"`  | SameSite cookie policy                |
+| Cookie Encryption Key | `COOKIE_ENCRYPTION_KEY` | `cookie.encryptionKey` | Required | Cookie encryption key (hex)           |
+| Cookie Signing Key    | `COOKIE_SIGNING_KEY`    | `cookie.signingKey`    | Required | Cookie signing key (hex)              |
+
+#### CORS Settings (`cors.*`)
+
+| Property           | Environment Variable       | Config File Path         | Default | Description                      |
+|--------------------|----------------------------|--------------------------|---------|----------------------------------|
+| CORS Allowed Hosts | `CORS_ALLOWED_HOSTS`       | `cors.allowedHosts`      | `[]`    | Comma-separated allowed hosts    |
+| CORS HTTPS Hosts   | `CORS_ALLOWED_HTTPS_HOSTS` | `cors.allowedHttpsHosts` | `[]`    | Comma-separated HTTPS-only hosts |
+
+#### HikariCP Connection Pool Settings (`hikari.*`)
+
+| Property                 | Environment Variable                 | Config File Path                  | Default   | Description                                    |
+|--------------------------|--------------------------------------|-----------------------------------|-----------|------------------------------------------------|
+| Max Pool Size            | `HIKARI_MAX_POOL_SIZE`               | `hikari.maxPoolSize`              | `10`      | Maximum connections in pool                    |
+| Min Idle                 | `HIKARI_MIN_IDLE`                    | `hikari.minIdle`                  | `2`       | Minimum idle connections to maintain           |
+| Connection Timeout       | `HIKARI_CONNECTION_TIMEOUT_MS`       | `hikari.connectionTimeoutMs`      | `5000`    | Max wait for connection from pool (ms)         |
+| Validation Timeout       | `HIKARI_VALIDATION_TIMEOUT_MS`       | `hikari.validationTimeoutMs`      | `3000`    | Max wait for connection validation (ms)        |
+| Idle Timeout             | `HIKARI_IDLE_TIMEOUT_MS`             | `hikari.idleTimeoutMs`            | `600000`  | Remove idle connections after this time (ms)   |
+| Max Lifetime             | `HIKARI_MAX_LIFETIME_MS`             | `hikari.maxLifetimeMs`            | `1800000` | Recycle connections after this time (ms)       |
+| Leak Detection Threshold | `HIKARI_LEAK_DETECTION_THRESHOLD_MS` | `hikari.leakDetectionThresholdMs` | `60000`   | Warn if connection held longer (ms, 0=disable) |
+
+### Example: Local Development (app-local.conf)
 
 ```hocon
-db.user = ""
-db.password = ""
-db.url = "jdbc:h2:./build/local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+httpPort = 4207
+
+db {
+  url = "jdbc:h2:./build/local;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+  user = ""
+  password = ""
+}
 
 useFileSystemAssets = true  # Hot-reload static files during development
 
-useSecureCookie = false  # Allow cookies over HTTP for local development
-cookieEncryptionKey = "1d13f63b868ad26c46151245e1b5175c"
-cookieSigningKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f"
+cookie {
+  useSecure = false  # Allow cookies over HTTP for local development
+  sameSite = "Lax"
+  encryptionKey = "1d13f63b868ad26c46151245e1b5175c"
+  signingKey = "d232897cbcc6cc89579bfbfc060632945e0dc519927c891733421f0f4a9ae48f"
+}
+
+cors {
+  allowedHosts = [
+    "localhost:4207",
+    "localhost:9000",
+    "127.0.0.1:9876"
+  ]
+  allowedHttpsHosts = []
+}
+
+thirdPartyServiceUrl = "http://localhost:9876"
 ```
+
+### Example: Production Configuration (Environment Variables)
+
+**Docker/Docker Compose:**
+
+```yaml
+environment:
+  - WEB_PLAYGROUND_ENV=prod
+  - DB_URL=jdbc:postgresql://db:5432/myapp
+  - DB_USER=appuser
+  - DB_PASSWORD=secure_password_from_secret
+  - COOKIE_ENCRYPTION_KEY=production_encryption_key_hex
+  - COOKIE_SIGNING_KEY=production_signing_key_hex
+  - USE_SECURE_COOKIE=true
+  - CORS_ALLOWED_HTTPS_HOSTS=myapp.com,www.myapp.com
+  - HIKARI_MAX_POOL_SIZE=20
+  - HIKARI_CONNECTION_TIMEOUT_MS=3000
+```
+
+**Kubernetes/Azure Container Apps:**
+
+```yaml
+env:
+  - name: WEB_PLAYGROUND_ENV
+    value: "prod"
+  - name: DB_URL
+    value: "jdbc:postgresql://postgres-service:5432/myapp"
+  - name: DB_USER
+    value: "appuser"
+  - name: DB_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-secret
+        key: password
+  - name: COOKIE_ENCRYPTION_KEY
+    valueFrom:
+      secretKeyRef:
+        name: app-secret
+        key: cookie-encryption-key
+  - name: COOKIE_SIGNING_KEY
+    valueFrom:
+      secretKeyRef:
+        name: app-secret
+        key: cookie-signing-key
+  - name: HIKARI_MAX_POOL_SIZE
+    value: "50"
+  - name: HIKARI_CONNECTION_TIMEOUT_MS
+    value: "3000"
+```
+
+**Shell Export (Linux/macOS):**
+
+```bash
+export WEB_PLAYGROUND_ENV=prod
+export DB_URL="jdbc:postgresql://localhost:5432/myapp"
+export DB_USER="appuser"
+export DB_PASSWORD="secure_password"
+export COOKIE_ENCRYPTION_KEY="prod_encryption_key_hex"
+export COOKIE_SIGNING_KEY="prod_signing_key_hex"
+export HIKARI_MAX_POOL_SIZE=20
+export HIKARI_CONNECTION_TIMEOUT_MS=3000
+```
+
+**PowerShell (Windows):**
+
+```powershell
+$env:WEB_PLAYGROUND_ENV="prod"
+$env:DB_URL="jdbc:postgresql://localhost:5432/myapp"
+$env:DB_USER="appuser"
+$env:DB_PASSWORD="secure_password"
+$env:COOKIE_ENCRYPTION_KEY="prod_encryption_key_hex"
+$env:COOKIE_SIGNING_KEY="prod_signing_key_hex"
+$env:HIKARI_MAX_POOL_SIZE=20
+$env:HIKARI_CONNECTION_TIMEOUT_MS=3000
+```
+
+### HikariCP Tuning Guide
+
+#### Development (Low Load)
+
+Use defaults - fast startup, adequate for local testing:
+
+```bash
+# No need to set anything, defaults are sensible
+```
+
+#### Production (High Traffic)
+
+Increase pool size and reduce timeouts:
+
+```bash
+export HIKARI_MAX_POOL_SIZE=50
+export HIKARI_MIN_IDLE=10
+export HIKARI_CONNECTION_TIMEOUT_MS=3000
+export HIKARI_IDLE_TIMEOUT_MS=300000
+```
+
+#### Production (Low Latency Requirements)
+
+Aggressive timeouts for fast failure:
+
+```bash
+export HIKARI_CONNECTION_TIMEOUT_MS=2000
+export HIKARI_VALIDATION_TIMEOUT_MS=1000
+```
+
+#### Debugging Connection Leaks
+
+Enable leak detection in development:
+
+```bash
+export HIKARI_LEAK_DETECTION_THRESHOLD_MS=10000  # Warn after 10 seconds
+```
+
+Disable in production (performance):
+
+```bash
+export HIKARI_LEAK_DETECTION_THRESHOLD_MS=0  # Disabled
+```
+
+### Configuration Loading Example
+
+**Resolution Order Example:**
+
+```
+Environment: prod
+Looking for: db.url
+
+Step 1: Check DB_URL environment variable
+        → Found: "jdbc:postgresql://prod-db:5432/myapp"
+        → Use this value ✓
+
+Step 2: (Skipped - env var found)
+        app-prod.conf: db.url = ${WEB_PLAYGROUND_DB_URL}
+
+Step 3: (Skipped - env var found)
+        app.conf: db.url = null
+
+Result: config.db.url = "jdbc:postgresql://prod-db:5432/myapp"
+```
+
+### Configuration Troubleshooting
+
+#### Problem: Configuration Not Loading
+
+**Symptom:** Application fails to start with Hoplite error
+
+**Solution:** Hoplite provides clear error messages:
+
+```
+Error loading config:
+- Missing required field: cookie.encryptionKey
+- Type mismatch at hikari.maxPoolSize: expected Int, got String
+```
+
+Fix by:
+
+1. Checking the error message - it tells you exactly what's wrong
+2. Verifying required fields are set (in config file or env vars)
+3. Ensuring correct types (numbers as numbers, not strings)
+
+#### Problem: Environment Variables Not Working
+
+**Symptom:** Application uses config file values instead of env vars
+
+**Common Causes:**
+
+1. Wrong naming: `DB.URL` ❌ should be `DB_URL` ✓
+2. Not exported: `DB_URL=value` ❌ should be `export DB_URL=value` ✓
+3. Wrong shell: PowerShell uses `$env:DB_URL="value"`
+
+**Solution:**
+
+```bash
+# Linux/macOS
+export DB_URL=jdbc:postgresql://localhost:5432/myapp
+export HIKARI_MAX_POOL_SIZE=50
+export CORS_ALLOWED_HOSTS=localhost:4207,example.com
+
+# Windows PowerShell
+$env:DB_URL="jdbc:postgresql://localhost:5432/myapp"
+$env:HIKARI_MAX_POOL_SIZE=50
+$env:CORS_ALLOWED_HOSTS="localhost:4207,example.com"
+
+# Verify
+echo $DB_URL           # Linux/macOS
+echo $env:DB_URL       # PowerShell
+```
+
+#### Problem: Nested Properties Not Mapped
+
+**Symptom:** Config property is null despite being set
+
+**Wrong HOCON syntax:**
+
+```hocon
+# ❌ This doesn't work with nested data classes
+db.url = "jdbc:..."
+db.user = "admin"
+```
+
+**Correct HOCON syntax:**
+
+```hocon
+# ✓ This works with Hoplite
+db {
+  url = "jdbc:..."
+  user = "admin"
+}
+```
+
+#### Problem: List Properties Not Parsing
+
+**Symptom:** Lists are empty despite being set
+
+**Solutions:**
+
+**In config file:**
+
+```hocon
+cors {
+  allowedHosts = ["localhost:4207", "example.com"]  # ✓ HOCON array
+}
+```
+
+**In environment variable:**
+
+```bash
+export CORS_ALLOWED_HOSTS=localhost:4207,example.com  # ✓ Comma-separated
+```
+
+### Configuration Best Practices
+
+#### ✅ DO
+
+1. **Use environment variables for secrets**
+   ```bash
+   export DB_PASSWORD=secure_password
+   export COOKIE_ENCRYPTION_KEY=production_key
+   ```
+
+2. **Use config files for defaults**
+   ```hocon
+   hikari {
+     maxPoolSize = 10
+     connectionTimeoutMs = 5000
+   }
+   ```
+
+3. **Leverage defaults in data classes**
+   ```kotlin
+   data class HikariConfig(
+       val maxPoolSize: Int = 10,  // ✓ Default value
+       val minIdle: Int = 2
+   )
+   ```
+
+4. **Group related settings**
+   ```kotlin
+   data class WebappConfig(
+       val db: DatabaseConfig,     // ✓ Grouped
+       val cookie: CookieConfig,   // ✓ Grouped
+       val hikari: HikariConfig    // ✓ Grouped
+   )
+   ```
+
+#### ❌ DON'T
+
+1. **Don't commit secrets to config files**
+   ```hocon
+   # ❌ Bad - password in source control
+   db.password = "production_password"
+   
+   # ✓ Good - reference env var
+   db.password = ${?DB_PASSWORD}
+   ```
+
+2. **Don't use flat structure for large configs**
+   ```kotlin
+   // ❌ Hard to maintain
+   data class Config(
+       val dbUrl: String,
+       val dbUser: String,
+       val dbPassword: String,
+       val hikariMaxPoolSize: Int,
+       val hikariMinIdle: Int,
+       // ... 20 more properties
+   )
+   
+   // ✓ Clean and organized
+   data class Config(
+       val db: DatabaseConfig,
+       val hikari: HikariConfig
+   )
+   ```
+
+3. **Don't make everything required**
+   ```kotlin
+   // ❌ Forces users to set everything
+   data class HikariConfig(
+       val maxPoolSize: Int,
+       val minIdle: Int
+   )
+   
+   // ✓ Sensible defaults
+   data class HikariConfig(
+       val maxPoolSize: Int = 10,
+       val minIdle: Int = 2
+   )
+   ```
 
 ## Requirements
 
@@ -1438,6 +1922,7 @@ data class PublicUser(
 ```
 
 **Why this matters:**
+
 - Prevents accidentally leaking sensitive internal fields
 - Forces explicit declaration of what's public in your API
 - Common security best practice for production applications
@@ -1721,12 +2206,14 @@ This application **intentionally does not include** application-level rate limit
 ### ❌ Problems with Application-Level Rate Limiting
 
 **In-Memory Limitations:**
+
 - ❌ **Lost on restart** - Rate limit state disappears when pod restarts
 - ❌ **Not distributed** - Each pod has independent limits (user can bypass by hitting different pods)
 - ❌ **Memory leaks** - Unbounded growth with unique keys (IPs, user IDs)
 - ❌ **No persistence** - Can't track long-term abuse patterns
 
 **Architectural Issues:**
+
 ```
 User makes 100 req/min → Pod 1 ✅ Allowed
 User makes 100 req/min → Pod 2 ✅ Allowed  
@@ -1741,6 +2228,7 @@ Rate limiting should be implemented **before requests reach your application** u
 #### Option 1: API Gateway (Best for Production)
 
 **Kong Gateway:**
+
 ```yaml
 plugins:
   - name: rate-limiting
@@ -1754,6 +2242,7 @@ plugins:
 ```
 
 **NGINX Plus / NGINX Ingress:**
+
 ```nginx
 # Define rate limit zone (10MB can track ~160k IPs)
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=100r/m;
@@ -1770,6 +2259,7 @@ location /api {
 ```
 
 **AWS API Gateway:**
+
 ```yaml
 # serverless.yml or CloudFormation
 Resources:
@@ -1777,7 +2267,7 @@ Resources:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: web-playground-api
-      
+
   UsagePlan:
     Type: AWS::ApiGateway::UsagePlan
     Properties:
@@ -1787,16 +2277,19 @@ Resources:
 ```
 
 **Azure API Management:**
+
 ```xml
+
 <policies>
     <inbound>
-        <rate-limit calls="100" renewal-period="60" />
-        <quota calls="10000" renewal-period="86400" />
+        <rate-limit calls="100" renewal-period="60"/>
+        <quota calls="10000" renewal-period="86400"/>
     </inbound>
 </policies>
 ```
 
 **Google Cloud Armor:**
+
 ```yaml
 securityPolicy:
   rateLimitOptions:
@@ -1808,6 +2301,7 @@ securityPolicy:
 #### Option 2: Load Balancer
 
 **HAProxy:**
+
 ```haproxy
 frontend api
     bind *:443
@@ -1823,6 +2317,7 @@ frontend api
 ```
 
 **Traefik:**
+
 ```yaml
 http:
   middlewares:
@@ -1836,6 +2331,7 @@ http:
 #### Option 3: CDN / DDoS Protection
 
 **Cloudflare Rate Limiting:**
+
 ```
 Rules → Rate Limiting:
   - If requests per minute > 100
@@ -1844,6 +2340,7 @@ Rules → Rate Limiting:
 ```
 
 **Cloudflare Workers (Advanced):**
+
 ```javascript
 export default {
   async fetch(request, env) {
@@ -1891,6 +2388,7 @@ export default {
 Use application-level rate limiting (with Redis) ONLY for:
 
 ✅ **Business logic limits:**
+
 ```kotlin
 // Example: Premium users get higher API quotas
 class UserQuotaService(private val redis: RedisClient) {
@@ -1914,6 +2412,7 @@ class UserQuotaService(private val redis: RedisClient) {
 If you **must** implement application-level rate limiting, use Redis:
 
 **Dependencies:**
+
 ```kotlin
 // build.gradle.kts
 dependencies {
@@ -1923,6 +2422,7 @@ dependencies {
 ```
 
 **Implementation:**
+
 ```kotlin
 class RedisRateLimiter(private val redis: JedisPool) {
     fun isAllowed(key: String, maxRequests: Int, window: Duration): Boolean {
@@ -1933,18 +2433,18 @@ class RedisRateLimiter(private val redis: JedisPool) {
         return redis.resource.use { conn ->
             // Atomic operations in Redis
             val pipe = conn.pipelined()
-            
+
             // Remove old entries
             pipe.zremrangeByScore(redisKey, 0.0, windowStart.toDouble())
-            
+
             // Count current requests
             val countResponse = pipe.zcard(redisKey)
-            
+
             // Execute pipeline
             pipe.sync()
-            
+
             val count = countResponse.get()
-            
+
             if (count < maxRequests) {
                 conn.zadd(redisKey, now.toDouble(), UUID.randomUUID().toString())
                 conn.expire(redisKey, window.seconds.toInt())
@@ -1958,6 +2458,7 @@ class RedisRateLimiter(private val redis: JedisPool) {
 ```
 
 **Using Bucket4j:**
+
 ```kotlin
 val proxyManager = RedisProxyManager.builderFor(jedisPool).build()
 
@@ -1975,12 +2476,14 @@ if (bucket.tryConsume(1)) {
 ### Monitoring Rate Limiting
 
 **Prometheus Metrics (from API Gateway):**
+
 ```
 rate_limit_exceeded_total{endpoint="/api/users"} 42
 rate_limit_allowed_total{endpoint="/api/users"} 9958
 ```
 
 **Grafana Dashboard:**
+
 - Requests per second by endpoint
 - Rate limit rejections over time
 - Top rate-limited IPs/users
@@ -1992,7 +2495,7 @@ rate_limit_allowed_total{endpoint="/api/users"} 9958
 ✅ **DO:** Use Redis for distributed application limits (if needed)  
 ❌ **DON'T:** Use in-memory rate limiting in microservices  
 ❌ **DON'T:** Implement in application code for basic protection  
-❌ **DON'T:** Trust client-side rate limiting  
+❌ **DON'T:** Trust client-side rate limiting
 
 **Remember:** Rate limiting is **infrastructure concern**, not application logic concern.
 

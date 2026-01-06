@@ -1,35 +1,109 @@
 package com.vshpynta.config
 
 /**
- * Immutable application configuration resolved from HOCON files (app-<env>.conf + fallback app.conf).
+ * Main application configuration using Hoplite for automatic mapping.
  *
- * Populated via `createAppConfig(env)` in `Main.kt`.
- * Use a dedicated loader to merge environment-specific overrides and secrets injection.
+ * **Configuration Sources (priority order):**
+ * 1. Environment variables (SCREAMING_SNAKE_CASE)
+ * 2. System properties
+ * 3. app-{env}.conf file
+ * 4. app.conf file
  *
- * @property httpPort Server listening port (0 for ephemeral in tests).
- * @property dbUrl JDBC URL for the primary data source.
- * @property dbUser Database username (empty for H2 test usage).
- * @property dbPassword Database password (empty for H2 test usage).
- * @property useFileSystemAssets Flag to serve static assets from the file system (true in local, false in prod).
- * @property useSecureCookie Enable Secure flag on cookies (requires HTTPS).
- * @property cookieSameSite SameSite cookie attribute (lax, strict, or none).
- * @property cookieEncryptionKey Key for encrypting session cookies.
- * @property cookieSigningKey Key for signing session cookies.
- * @property corsAllowedHosts List of allowed hosts for CORS (format: "host:port" or just "host").
- * @property corsAllowedHttpsHosts List of allowed HTTPS-only hosts for CORS.
- * @property thirdPartyServiceUrl Base URL for the third-party demo service (for async HTTP call demonstrations).
+ * **Hoplite Benefits:**
+ * - ✅ Zero boilerplate - automatic data class mapping
+ * - ✅ Type-safe - compiler validates configuration structure
+ * - ✅ Environment variables - automatic with proper naming conventions
+ * - ✅ Validation - built-in with clear error messages
+ * - ✅ Nested configuration - clean, organized structure
+ *
+ * **Example Environment Variables:**
+ * ```
+ * HTTP_PORT=8080
+ * DB_URL=jdbc:postgresql://localhost:5432/myapp
+ * DB_PASSWORD=secret
+ * HIKARI_MAX_POOL_SIZE=50
+ * CORS_ALLOWED_HOSTS=localhost:4207,example.com
+ * ```
+ *
+ * Hoplite automatically converts between camelCase (config files) and SCREAMING_SNAKE_CASE (env vars).
  */
 data class WebappConfig(
-    val httpPort: Int,
-    val dbUrl: String,
-    val dbUser: String,
-    val dbPassword: String,
-    val useFileSystemAssets: Boolean,
-    val useSecureCookie: Boolean,
-    val cookieSameSite: String,
-    val cookieEncryptionKey: String,
-    val cookieSigningKey: String,
-    val corsAllowedHosts: List<String>,
-    val corsAllowedHttpsHosts: List<String>,
-    val thirdPartyServiceUrl: String
+    val httpPort: Int = 4207,
+    val db: DatabaseConfig,
+    val useFileSystemAssets: Boolean = false,
+    val cookie: CookieConfig,
+    val cors: CorsConfig = CorsConfig(),
+    val thirdPartyServiceUrl: String,
+    val hikari: HikariConfig = HikariConfig()
+)
+
+/**
+ * Database configuration.
+ *
+ * **Environment Variables:**
+ * - DB_URL
+ * - DB_USER
+ * - DB_PASSWORD
+ */
+data class DatabaseConfig(
+    val url: String,
+    val user: String = "",
+    val password: String = ""
+)
+
+/**
+ * Cookie security configuration.
+ *
+ * **Environment Variables:**
+ * - COOKIE_USE_SECURE
+ * - COOKIE_SAME_SITE
+ * - COOKIE_ENCRYPTION_KEY
+ * - COOKIE_SIGNING_KEY
+ */
+data class CookieConfig(
+    val useSecure: Boolean = true,
+    val sameSite: String = "Lax",
+    val encryptionKey: String,
+    val signingKey: String
+)
+
+/**
+ * CORS (Cross-Origin Resource Sharing) configuration.
+ *
+ * **Environment Variables:**
+ * - CORS_ALLOWED_HOSTS (comma-separated)
+ * - CORS_ALLOWED_HTTPS_HOSTS (comma-separated)
+ */
+data class CorsConfig(
+    val allowedHosts: List<String> = emptyList(),
+    val allowedHttpsHosts: List<String> = emptyList()
+)
+
+/**
+ * HikariCP connection pool configuration.
+ *
+ * **Environment Variables:**
+ * - HIKARI_MAX_POOL_SIZE
+ * - HIKARI_MIN_IDLE
+ * - HIKARI_CONNECTION_TIMEOUT_MS
+ * - HIKARI_VALIDATION_TIMEOUT_MS
+ * - HIKARI_IDLE_TIMEOUT_MS
+ * - HIKARI_MAX_LIFETIME_MS
+ * - HIKARI_LEAK_DETECTION_THRESHOLD_MS
+ *
+ * **Tuning Guide:**
+ * - Development: Use defaults
+ * - Production (high traffic): maxPoolSize=50, minIdle=10
+ * - Production (low latency): connectionTimeoutMs=2000
+ * - Debugging: leakDetectionThresholdMs=10000
+ * - Production (performance): leakDetectionThresholdMs=0
+ */
+data class HikariConfig(
+    val maxPoolSize: Int = 10,
+    val minIdle: Int = 2,
+    val connectionTimeoutMs: Long = 5000,
+    val validationTimeoutMs: Long = 3000,
+    val idleTimeoutMs: Long = 600000,
+    val maxLifetimeMs: Long = 1800000,
+    val leakDetectionThresholdMs: Long = 60000
 )

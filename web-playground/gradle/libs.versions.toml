@@ -2,7 +2,7 @@
 ktor = "3.3.2"
 logback = "1.5.20"
 slf4j = "2.0.17"
-typesafe-config = "1.4.3"
+hoplite = "2.9.0"
 gson = "2.13.2"
 hikaricp = "7.0.2"
 flyway = "11.16.0"
@@ -40,8 +40,9 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host-jvm" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 
-# Configuration
-typesafe-config = { module = "com.typesafe:config", version.ref = "typesafe-config" }
+# Configuration - Hoplite (modern Kotlin config library)
+hoplite-core = { module = "com.sksamuel.hoplite:hoplite-core", version.ref = "hoplite" }
+hoplite-hocon = { module = "com.sksamuel.hoplite:hoplite-hocon", version.ref = "hoplite" }
 
 # JSON
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }

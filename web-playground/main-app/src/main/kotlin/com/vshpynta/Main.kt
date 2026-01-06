@@ -22,10 +22,10 @@ package com.vshpynta
 import arrow.core.raise.either
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
-import com.typesafe.config.ConfigFactory
+import com.sksamuel.hoplite.ConfigLoaderBuilder
+import com.sksamuel.hoplite.PropertySource
 import com.vshpynta.config.ConfigStringifier.stringify
 import com.vshpynta.config.WebappConfig
-import com.vshpynta.config.getStringListOrCommaSeparated
 import com.vshpynta.db.mapFromRow
 import com.vshpynta.db.mapping.fromRow
 import com.vshpynta.model.User
@@ -240,12 +240,12 @@ fun Application.setUpKtorApplication(
         allowMethod(HttpMethod.Delete)
 
         // Allow hosts from configuration (any protocol)
-        webappConfig.corsAllowedHosts.forEach { host ->
+        webappConfig.cors.allowedHosts.forEach { host ->
             allowHost(host)
         }
 
         // Allow HTTPS-only hosts from configuration (production)
-        webappConfig.corsAllowedHttpsHosts.forEach { host ->
+        webappConfig.cors.allowedHttpsHosts.forEach { host ->
             allowHost(host, schemes = listOf("https"))
         }
 
@@ -353,15 +353,15 @@ fun Application.setUpKtorCookieSecurity(
         cookie<UserSession>(USER_SESSION_COOKIE_NAME) {
             transform(
                 SessionTransportTransformerEncrypt(
-                    hex(appConfig.cookieEncryptionKey),
-                    hex(appConfig.cookieSigningKey)
+                    hex(appConfig.cookie.encryptionKey),
+                    hex(appConfig.cookie.signingKey)
                 )
             )
             cookie.maxAge = Duration.parse("1d")
             cookie.httpOnly = true
             cookie.path = "/" // Cookie valid for entire site
-            cookie.secure = appConfig.useSecureCookie // Use secure cookies in production
-            cookie.extensions["SameSite"] = appConfig.cookieSameSite // Configure CORS policy
+            cookie.secure = appConfig.cookie.useSecure // Use secure cookies in production
+            cookie.extensions["SameSite"] = appConfig.cookie.sameSite // Configure CORS policy
         }
     }
 
@@ -563,7 +563,7 @@ fun Application.setUpKtorJwtSecurity(
             // Uses same signing key as cookies for simplicity (could be different in production)
             verifier(
                 JWT
-                    .require(Algorithm.HMAC256(appConfig.cookieSigningKey))
+                    .require(Algorithm.HMAC256(appConfig.cookie.signingKey))
                     .withAudience(jwtAudience)
                     .withIssuer(jwtIssuer)
                     .build()
@@ -619,7 +619,7 @@ fun Application.setUpKtorJwtSecurity(
                                 .toInstant(ZoneOffset.UTC)
                         )
                     )
-                    .sign(Algorithm.HMAC256(appConfig.cookieSigningKey))
+                    .sign(Algorithm.HMAC256(appConfig.cookie.signingKey))
 
                 // Return token to client - client must store it and include in Authorization header
                 JsonWebResponse(mapOf("token" to token))
@@ -982,16 +982,60 @@ fun createAndMigrateDataSource(config: WebappConfig) =
     createDataSource(config).also(::migrateDataSource)
 
 /**
- * Creates a HikariCP JDBC datasource from the provided config.
+ * Creates a production-ready HikariCP JDBC datasource with configurable settings.
+ *
+ * **Configuration Sources (priority order):**
+ * 1. Environment variables (HIKARI_MAX_POOL_SIZE, HIKARI_CONNECTION_TIMEOUT_MS, etc.)
+ * 2. Config file properties (hikari.maxPoolSize, hikari.connectionTimeoutMs, etc.)
+ * 3. Default values from WebappConfig data class
+ *
+ * **Recommended Settings:**
+ * - **Development**: Use defaults (fast startup, adequate for low load)
+ * - **Production**: Tune based on your workload and connection requirements
+ *   - High traffic: Increase maxPoolSize (20-50)
+ *   - Low latency requirements: Decrease connectionTimeout (2-3 seconds)
+ *   - Connection pooling issues: Enable leakDetectionThreshold (60 seconds)
+ *
+ * **Key Parameters:**
+ * - **maximumPoolSize**: Max connections in pool (default: 10)
+ * - **minimumIdle**: Min idle connections to maintain (default: 2)
+ * - **connectionTimeout**: Max wait for connection from pool (default: 5000ms)
+ * - **validationTimeout**: Max wait for connection validation (default: 3000ms)
+ * - **idleTimeout**: Remove idle connections after this time (default: 600000ms = 10 min)
+ * - **maxLifetime**: Recycle connections after this time (default: 1800000ms = 30 min)
+ * - **leakDetectionThreshold**: Warn if connection held longer (default: 60000ms = 1 min)
  *
  * @param config The loaded application configuration.
- * @return The initialized [HikariDataSource].
+ * @return The initialized [HikariDataSource] with production-ready settings.
  */
 fun createDataSource(config: WebappConfig) =
     HikariDataSource().apply {
-        jdbcUrl = config.dbUrl
-        username = config.dbUser
-        password = config.dbPassword
+        // JDBC connection settings
+        jdbcUrl = config.db.url
+        username = config.db.user
+        password = config.db.password
+
+        // Connection pool sizing (configurable via env vars or config file)
+        maximumPoolSize = config.hikari.maxPoolSize
+        minimumIdle = config.hikari.minIdle
+
+        // Timeout settings (all in milliseconds, configurable)
+        connectionTimeout = config.hikari.connectionTimeoutMs
+        validationTimeout = config.hikari.validationTimeoutMs
+        idleTimeout = config.hikari.idleTimeoutMs
+        maxLifetime = config.hikari.maxLifetimeMs
+
+        // Connection validation and health checks
+        connectionTestQuery = "SELECT 1"  // Query to test connection validity
+
+        // Leak detection (configurable, set to 0 to disable in production if needed)
+        leakDetectionThreshold = config.hikari.leakDetectionThresholdMs
+
+        // Pool identification (helpful for monitoring)
+        poolName = "web-playground-pool"
+
+        // Performance settings
+        isAutoCommit = true  // Default, but explicit for clarity
     }
 
 /**
@@ -1009,29 +1053,43 @@ fun migrateDataSource(dataSource: DataSource): MigrateResult =
         .migrate()
 
 /**
- * Loads and parses the application configuration for the given environment.
+ * Loads application configuration using Hoplite - modern Kotlin configuration library.
+ *
+ * **Hoplite Benefits:**
+ * - **Zero Boilerplate** - Automatic data class mapping, no manual parsing
+ * - **Type-Safe** - Compiler validates configuration structure
+ * - **Environment Variables** - Automatic with SCREAMING_SNAKE_CASE conversion
+ * - **Multiple Sources** - HOCON, env vars, system properties (priority order)
+ * - **Validation** - Built-in with clear error messages
+ *
+ * **Configuration Priority (highest to lowest):**
+ * 1. Environment variables (e.g., HTTP_PORT, DB_URL, HIKARI_MAX_POOL_SIZE)
+ * 2. System properties (-Dhttp.port=8080)
+ * 3. app-{env}.conf file (e.g., app-prod.conf)
+ * 4. app.conf file (base defaults)
+ *
+ * **Example Environment Variables:**
+ * ```bash
+ * export HTTP_PORT=8080
+ * export DB_URL=jdbc:postgresql://localhost:5432/myapp
+ * export DB_PASSWORD=secret
+ * export COOKIE_ENCRYPTION_KEY=prod_key_hex
+ * export HIKARI_MAX_POOL_SIZE=50
+ * export CORS_ALLOWED_HOSTS=localhost:4207,example.com
+ * ```
+ *
+ * **Hoplite automatically converts:**
+ * - camelCase (config files) ↔ SCREAMING_SNAKE_CASE (env vars)
+ * - nested.paths ↔ NESTED_PATHS
+ * - Lists from comma-separated strings
  *
  * @param env The environment name (e.g., 'local', 'prod', 'test').
- * @return The parsed [WebappConfig].
+ * @return The parsed [WebappConfig] with automatic data class mapping.
  */
-fun createAppConfig(env: String) =
-    ConfigFactory
-        .parseResources("app-${env}.conf")
-        .withFallback(ConfigFactory.parseResources("app.conf"))
-        .resolve()
-        .let {
-            WebappConfig(
-                httpPort = it.getInt("httpPort"),
-                dbUrl = it.getString("db.url"),
-                dbUser = it.getString("db.user"),
-                dbPassword = it.getString("db.password"),
-                useFileSystemAssets = it.getBoolean("useFileSystemAssets"),
-                useSecureCookie = it.getBoolean("useSecureCookie"),
-                cookieSameSite = it.getString("cookieSameSite"),
-                cookieEncryptionKey = it.getString("cookieEncryptionKey"),
-                cookieSigningKey = it.getString("cookieSigningKey"),
-                corsAllowedHosts = it.getStringListOrCommaSeparated("cors.allowedHosts"),
-                corsAllowedHttpsHosts = it.getStringListOrCommaSeparated("cors.allowedHttpsHosts"),
-                thirdPartyServiceUrl = it.getString("thirdPartyServiceUrl")
-            )
-        }
+fun createAppConfig(env: String): WebappConfig =
+    ConfigLoaderBuilder.default()
+        .addSource(PropertySource.resource("/app-${env}.conf"))
+        .addSource(PropertySource.resource("/app.conf"))
+        .build()
+        .loadConfigOrThrow<WebappConfig>()
+

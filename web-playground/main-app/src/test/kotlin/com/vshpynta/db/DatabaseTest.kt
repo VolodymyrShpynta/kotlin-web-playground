@@ -75,7 +75,7 @@ class DatabaseTest {
         // Given: application configuration supplying JDBC URL
         // When: DataSource is created in setUp()
         // Then: DataSource reflects configured URL
-        assertEquals(appConfig.dbUrl, dataSource.jdbcUrl)
+        assertEquals(appConfig.db.url, dataSource.jdbcUrl)
     }
 
     @DisplayName("Flyway migrations execute and create schema")

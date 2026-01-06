@@ -37,8 +37,9 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(libs.slf4j.api)
 
-    // Configuration management
-    implementation(libs.typesafe.config)
+    // Configuration management - Hoplite (modern Kotlin config library)
+    implementation(libs.hoplite.core)
+    implementation(libs.hoplite.hocon)
 
     // JSON serialization
     implementation(libs.gson)
