@@ -12,3 +12,4 @@ rootProject.name = "web-playground"
 // Include submodules
 include("main-app")
 include("third-party-service")
+include("catalog-service")

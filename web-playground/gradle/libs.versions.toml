@@ -1,4 +1,5 @@
 [versions]
+kotlin = "2.2.20"
 ktor = "3.3.2"
 logback = "1.5.20"
 slf4j = "2.0.17"
@@ -14,10 +15,14 @@ kotlinx-coroutines = "1.10.2"
 assertj = "3.27.6"
 micrometer = "1.15.5"
 detekt = "1.23.8"
+spring-boot = "4.0.1"
 
 [libraries]
 # Ktor BOM
 ktor-bom = { module = "io.ktor:ktor-bom", version.ref = "ktor" }
+
+# Spring Boot BOM
+spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 
 # Ktor server (versions are managed by the BOM)
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm" }
@@ -60,6 +65,9 @@ bcrypt = { module = "at.favre.lib:bcrypt", version.ref = "bcrypt" }
 arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
 arrow-fx-stm = { module = "io.arrow-kt:arrow-fx-stm", version.ref = "arrow" }
 
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor", version.ref = "kotlinx-coroutines" }
+
 # Testing
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
@@ -68,9 +76,17 @@ assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }
 ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer" }
 
+# Spring Boot (versions are managed by the BOM)
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-webflux = { module = "org.springframework.boot:spring-boot-starter-webflux" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+
 
 [plugins]
-kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version = "2.2.20" }
-kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version = "2.2.20" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

@@ -28,6 +28,21 @@ services:
     #   - ./data:/app/build
     restart: unless-stopped
 
+  catalog-service:
+    build:
+      context: ./catalog-service
+      dockerfile: Dockerfile
+    image: catalog-service:latest
+    container_name: catalog-service
+    ports:
+      - "9001:9877"
+    environment:
+      - SERVER_PORT=${CATALOG_SERVICE_PORT:-9877}
+      - THIRD_PARTY_SERVICE_URL=${THIRD_PARTY_SERVICE_URL:-http://third-party-service:9002}
+    depends_on:
+      - third-party-service
+    restart: unless-stopped
+
   third-party-service:
     build:
       context: ./third-party-service
@@ -35,9 +50,7 @@ services:
     image: third-party-service:latest
     container_name: third-party-service
     ports:
-      - "9876:9876"
+      - "9002:9876"
     environment:
       - THIRD_PARTY_SERVICE_PORT=${THIRD_PARTY_SERVICE_PORT:-9876}
     restart: unless-stopped
-
-
