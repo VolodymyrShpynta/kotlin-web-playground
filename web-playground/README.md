@@ -1658,6 +1658,36 @@ CMD exec java -jar /app/main-app-1.0-SNAPSHOT-all.jar
 
 ## Development Guide
 
+### Dependency Management
+
+**Version Catalog**: All versions managed in `gradle/libs.versions.toml` (single source of truth).
+
+**Gradle's Default Strategy**: "Newest version wins" - automatically resolves conflicts by choosing the highest version.
+
+**Optional Strict Mode** (Maven Enforcer equivalent):
+```kotlin
+// In build.gradle.kts add following configuration:
+configurations.all {
+    resolutionStrategy {
+        failOnVersionConflict()  // Build fails on ANY version conflict
+    }
+}
+```
+
+**Note:** Strict mode requires manual resolution of ALL transitive dependency conflicts. For most projects, Gradle's default "newest wins" is more practical and works well with version catalog + BOMs.
+
+**Commands:**
+```bash
+# View dependency tree
+./gradlew main-app:dependencies
+
+# Generate the full dependency graph
+./gradlew dependencies --configuration runtimeClasspath
+
+# Investigate specific dependency
+./gradlew main-app:dependencyInsight --configuration runtimeClasspath --dependency kotlin-stdlib
+```
+
 ### Building the Project
 
 ```bash
