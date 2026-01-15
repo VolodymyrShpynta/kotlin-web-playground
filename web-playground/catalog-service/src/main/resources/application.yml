@@ -1,10 +1,15 @@
+# Configuration for catalog-service
+
+# Server configuration
 server:
   port: ${SERVER_PORT:9877}
 
+# Spring Boot configuration
 spring:
   application:
     name: catalog-service
 
+# Actuator configuration
 management:
   endpoints:
     web:
@@ -14,7 +19,14 @@ management:
     health:
       show-details: when-authorized
 
+# Third-party service configuration
+third-party:
+  service:
+    # Can be overridden by environment variable THIRD_PARTY_SERVICE_URL
+    url: ${THIRD_PARTY_SERVICE_URL:http://localhost:9876}
+
+# Logging configuration
 logging:
   level:
     root: INFO
-    com.vshpynta.catalog: DEBUG
+    com.vshpynta: DEBUG

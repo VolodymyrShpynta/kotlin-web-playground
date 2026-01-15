@@ -1,5 +1,6 @@
 package com.vshpynta.catalog.service
 
+import com.vshpynta.catalog.config.ThirdPartyServiceProperties
 import com.vshpynta.catalog.model.Book
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -16,13 +17,11 @@ import org.springframework.web.reactive.function.client.WebClient
  */
 @Service
 class CatalogService(
-    webClientBuilder: WebClient.Builder
+    webClientBuilder: WebClient.Builder,
+    thirdPartyProperties: ThirdPartyServiceProperties
 ) {
-    private val thirdPartyServiceUrl = System.getenv("THIRD_PARTY_SERVICE_URL")
-        ?: "http://localhost:9876"
-
     private val webClient = webClientBuilder
-        .baseUrl(thirdPartyServiceUrl)
+        .baseUrl(thirdPartyProperties.url)
         .build()
 
     /**

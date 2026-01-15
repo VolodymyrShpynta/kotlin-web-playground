@@ -16,6 +16,9 @@ assertj = "3.27.6"
 micrometer = "1.15.5"
 detekt = "1.23.8"
 spring-boot = "4.0.1"
+mockk = "1.14.7"
+springmockk = "5.0.1"
+wiremock = "3.13.2"
 
 [libraries]
 # Ktor BOM
@@ -71,6 +74,9 @@ kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutine
 # Testing
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
+wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 
 # Metrics and monitoring
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }

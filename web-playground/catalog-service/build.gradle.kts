@@ -23,7 +23,11 @@ dependencies {
     // Logging is provided by spring-boot-starter-web (includes logback-classic and slf4j-api)
 
     // Testing
-    testImplementation(libs.spring.boot.starter.test)  // Includes JUnit 5, Mockito, AssertJ, Spring Test
+    testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.mockk)  // MockK for Kotlin mocking
+    testImplementation(libs.springmockk)  // Spring + MockK integration (@MockkBean support)
+    testImplementation(libs.kotlinx.coroutines.test)  // Coroutine testing utilities
+    testImplementation(libs.wiremock)  // WireMock for stubbing HTTP calls to external services
 }
 
 kotlin {
